@@ -1,0 +1,11 @@
+[Unit]
+Description=Allume le ScreenPad ASUS (invisible du système tant que le firmware le laisse éteint)
+After=multi-user.target suspend.target hibernate.target hybrid-sleep.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/screenpad-power on
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target suspend.target hibernate.target hybrid-sleep.target

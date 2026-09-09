@@ -1,0 +1,49 @@
+#!/bin/bash
+# Bascule la surface du ScreenPad entre trackpad et écran tactile.
+#
+# Le pad émet déjà des coordonnées absolues multitouch, sur une surface au ratio
+# exact de son écran. Seule l'étiquette udev ID_INPUT_TOUCHPAD pousse libinput à
+# les convertir en déplacements relatifs de curseur. En basculant l'étiquette
+# puis en réattachant le contrôleur i2c-hid, les périphériques d'entrée sont
+# recréés dans l'autre rôle, sans redémarrage.
+#
+# Le firmware refuse le mode digitizer standard (Input Mode du descripteur HID
+# est accepté puis ignoré), c'est donc la seule voie. Compromis inévitable, le
+# même que sous Windows : le pad est soit une souris, soit un écran tactile.
+#
+# usage : screenpad-touchmode {touch|pointer|status}
+
+set -u
+
+REGLE=/etc/udev/rules.d/71-screenpad-touchscreen.rules
+: "${SCREENPAD_TOUCH_NAME:=GDX1515:00 27C6:01F4 Touchpad}"
+: "${SCREENPAD_I2C:=i2c-GDX1515:00}"
+DRIVER=/sys/bus/i2c/drivers/i2c_hid_acpi
+
+[[ $EUID -eq 0 || ${1:-status} == status ]] || { echo "root requis" >&2; exit 1; }
+
+reattacher() {
+  udevadm control --reload-rules
+  echo "$SCREENPAD_I2C" > "$DRIVER/unbind" 2>/dev/null || true
+  sleep 1
+  echo "$SCREENPAD_I2C" > "$DRIVER/bind" 2>/dev/null || true
+  sleep 2
+  udevadm trigger --subsystem-match=input >/dev/null 2>&1 || true
+}
+
+case "${1:-status}" in
+  touch)
+    cat > "$REGLE" <<EOF
+# Le ScreenPad est à la fois un touchpad et l'écran qu'il affiche. Étiqueté
+# touchpad, libinput transforme ses coordonnées absolues en mouvements relatifs
+# et l'on ne peut pas toucher ce qui est affiché sous le doigt.
+SUBSYSTEM=="input", ATTRS{name}=="$SCREENPAD_TOUCH_NAME", \\
+  ENV{ID_INPUT_TOUCHPAD}="0", ENV{ID_INPUT_TOUCHSCREEN}="1"
+EOF
+    reattacher; echo "touch" ;;
+  pointer)
+    rm -f "$REGLE"; reattacher; echo "pointer" ;;
+  status)
+    [[ -f $REGLE ]] && echo "touch" || echo "pointer" ;;
+  *) echo "usage: $(basename "$0") {touch|pointer|status}" >&2; exit 1 ;;
+esac

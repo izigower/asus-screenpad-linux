@@ -1,0 +1,88 @@
+#!/bin/bash
+# Cycle du ScreenPad sur 3 états, comme le Fn+F6 de Windows :
+#
+#   1. touchpad seul        (écran éteint, touchpad actif)
+#   2. touchpad + écran     (le pad devient un second écran)
+#   3. tout désactivé       (écran éteint, touchpad coupé)
+#
+# L'écran du pad n'existe pour le système que si le firmware l'a allumé
+# (device WMI 0x00050031) : voir omarchy-screenpad-power.
+#
+# Le touchpad est piloté ici plutôt que via omarchy-toggle-touchpad, qui
+# afficherait son propre OSD en plus du nôtre. On reprend sa mécanique :
+# hl.device pour l'état vivant, et un fichier d'état que
+# default/hypr/disabled-input-device.lua relit à chaque rechargement.
+
+SP=/usr/local/bin/omarchy-screenpad-power
+TP_STATE="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled-name"
+
+# Glyphes vérifiés au rendu : touchpad, écran, croix.
+ICON_PAD="󰟸"; ICON_SCREEN="󰍹"; ICON_OFF="󰅙"
+
+osd() { omarchy-osd -i "$1" -m "$2" 2>/dev/null || true; }
+
+# L'écran d'accueil tactile ne vit que tant que le pad est un écran.
+# Lancé comme unité systemd utilisateur : un simple & ne survit pas au script,
+# et Hyprland ne relaie pas l'environnement graphique de la même façon.
+dock_lancer() {
+  systemctl --user is-active --quiet screenpad-dock 2>/dev/null && return
+  systemd-run --user --quiet --unit=screenpad-dock \
+    --description="Ecran d'accueil du ScreenPad" \
+    "$HOME/.local/bin/omarchy-screenpad-dock" 2>/dev/null || true
+}
+# Ne pas arrêter le lanceur : il se cache de lui-même quand l'écran disparaît et
+# reste prêt, ce qui rend le rallumage instantané.
+dock_fermer() { :; }
+
+# Le pad est soit une souris, soit un écran tactile — jamais les deux, faute
+# d'un firmware qui accepte le mode digitizer. On suit donc l'écran : tactile
+# quand il affiche, trackpad sinon. C'est le compromis de ScreenXpert.
+TOUCH=/usr/local/bin/omarchy-screenpad-touchmode
+tactile()  { [[ -x $TOUCH ]] && sudo -n "$TOUCH" tactile  >/dev/null 2>&1 || true; }
+trackpad() { [[ -x $TOUCH ]] && sudo -n "$TOUCH" trackpad >/dev/null 2>&1 || true; }
+
+[[ -x $SP ]] || { osd "$ICON_OFF" "ScreenPad : installation incomplète"; exit 1; }
+
+touchpad() {   # $1 = true|false
+  local dev quoted
+  dev=$(omarchy-hw-touchpad 2>/dev/null) || true
+  # En mode tactile le pad est classé écran tactile : omarchy-hw-touchpad ne
+  # renvoie alors rien. On retombe sur son nom connu, sinon la désactivation
+  # du touchpad ne s'écrit jamais et l'état 3 devient inatteignable.
+  [[ -n $dev ]] || dev="gdx1515:00-27c6:01f4-touchpad"
+  quoted=${dev//\\/\\\\}; quoted=${quoted//\"/\\\"}
+  hyprctl eval "hl.device({ name = \"$quoted\", enabled = $1 })" >/dev/null 2>&1
+  if [[ $1 == true ]]; then
+    rm -f "$TP_STATE"
+  else
+    mkdir -p "$(dirname "$TP_STATE")"
+    printf '%s\n' "$dev" > "$TP_STATE"
+  fi
+}
+
+ecran_allume() {
+  local v; v=$(sudo -n "$SP" status 2>/dev/null) || return 1
+  (( ( ${v:-0} & 0xffff ) != 0 ))
+}
+touchpad_coupe() { [[ -s $TP_STATE ]]; }
+
+if touchpad_coupe; then
+  # 3 -> 1 : on rend le touchpad, l'écran reste éteint
+  osd "$ICON_PAD" "Touchpad seul"
+  touchpad true
+  sudo -n "$SP" off >/dev/null 2>&1
+  trackpad &
+elif ecran_allume; then
+  # 2 -> 3 : on éteint tout
+  osd "$ICON_OFF" "ScreenPad désactivé"
+  sudo -n "$SP" off >/dev/null 2>&1
+  touchpad false
+  trackpad &
+else
+  # 1 -> 2 : le pad devient un écran.
+  # L'OSD d'abord : le retour visuel ne doit pas attendre le matériel.
+  osd "$ICON_SCREEN" "ScreenPad tactile"
+  dock_lancer                          # déjà en attente le plus souvent
+  sudo -n "$SP" on >/dev/null 2>&1     # le lanceur s'affiche avec l'écran
+  tactile &                            # bascule udev : ~3 s, sans bloquer
+fi

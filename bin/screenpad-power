@@ -1,0 +1,48 @@
+#!/bin/bash
+# Allume ou éteint le panneau du ScreenPad d'un ASUS ZenBook.
+#
+# Le firmware laisse le panneau éteint au démarrage. Tant qu'il l'est, le
+# connecteur reste "disconnected" côté DRM : aucun système ne voit l'écran, et
+# rien ne le distingue d'un port vide. Le pilote asus-wmi connaît pourtant le
+# device WMI qui l'allume, mais n'expose pas d'écriture fiable dessus — son
+# attribut bl_power ne reflète même pas l'état réel du panneau.
+#
+# On passe donc par acpi_call pour invoquer directement la méthode ACPI du
+# firmware : \_SB.ATKD.WMNB, méthode DEVS, device id 0x00050031.
+#
+# usage : screenpad-power {on|off|toggle|status}
+
+set -u
+
+DEVICE_ID=0x00050031      # SCREENPAD_POWER
+DEVS=0x53564544           # "DEVS" : écriture
+DSTS=0x53545344           # "DSTS" : lecture
+METHODE='\_SB.ATKD.WMNB'
+
+modprobe acpi_call 2>/dev/null
+[[ -e /proc/acpi/call ]] || { echo "acpi_call indisponible (paquet acpi_call-dkms)" >&2; exit 1; }
+
+# Construit le tampon attendu : id du device puis valeur, chacun sur 4 octets
+# en little-endian.
+tampon() {
+  printf 'b%02x%02x%02x%02x%02x%02x%02x%02x' \
+    $((  $1      & 0xff )) $(( ($1>>8)  & 0xff )) $(( ($1>>16) & 0xff )) $(( ($1>>24) & 0xff )) \
+    $((  $2      & 0xff )) $(( ($2>>8)  & 0xff )) $(( ($2>>16) & 0xff )) $(( ($2>>24) & 0xff ))
+}
+
+appel() {
+  echo "$METHODE 0x0 $1 $2" > /proc/acpi/call 2>/dev/null
+  tr -d '\0' < /proc/acpi/call
+}
+
+etat() { appel $DSTS "$(tampon $((DEVICE_ID)) 0)"; }
+allume() { (( ( $(( $(etat) )) & 0xffff ) != 0 )); }
+
+case "${1:-status}" in
+  on)     appel $DEVS "$(tampon $((DEVICE_ID)) 1)" >/dev/null; sleep 1; echo "$(etat)" ;;
+  off)    appel $DEVS "$(tampon $((DEVICE_ID)) 0)" >/dev/null; sleep 1; echo "$(etat)" ;;
+  toggle) allume && exec "$0" off || exec "$0" on ;;
+  status) etat ;;
+  is-on)  allume ;;
+  *)      echo "usage: $(basename "$0") {on|off|toggle|status|is-on}" >&2; exit 1 ;;
+esac
