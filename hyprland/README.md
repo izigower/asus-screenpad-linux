@@ -45,11 +45,12 @@ Les utilitaires s'y placent comme des applications :
 }
 ```
 
-La luminosité ne descend jamais sous 200/255, le seuil sous lequel le
-firmware coupe le panneau. Au-delà, un voile noir prend le relais.
+Le curseur de luminosité ne touche jamais au rétroéclairage : il pose un
+voile noir. Le firmware lie alimentation et luminosité, et une écriture dans
+`asus_screenpad`, même à 249/255, peut couper le panneau.
 
 Dépendances : `gtk4-layer-shell`, `libadwaita`, `python-gobject`, `wtype`
-(pour Number Key et Quick Key), `brightnessctl`, et `uwsm-app` s'il est
+(pour Number Key et Quick Key), et `uwsm-app` s'il est
 présent (les applications lancées reçoivent alors leur propre unité systemd
 et survivent à un redémarrage du lanceur).
 

@@ -59,14 +59,9 @@ ETAT_MODE = os.path.join(ETAT, "screenpad-mode")
 ETAT_LUMIERE = os.path.join(ETAT, "screenpad-luminosite")
 COLONNES = 4
 PAR_PAGE = COLONNES * 2   # 4 colonnes x 2 lignes, comme ScreenXpert
-BACKLIGHT = "asus_screenpad"
 CONNECTEUR = "HDMI-A-2"      # le ScreenPad
 ECRAN_PRINCIPAL = "eDP-1"
 
-# Sous ~200/255 le firmware coupe le panneau : l'écran disparaît et le lanceur
-# avec. La luminosité matérielle reste donc dans [200, 255] ; en dessous, c'est
-# un voile noir qui assombrit.
-LUMIERE_MIN_MATERIEL = 200
 
 
 def premier_executable(*chemins):
@@ -917,7 +912,7 @@ class Dock(Adw.Application):
     def _assombrir(self):
         self.sombre = Gtk.Box(css_classes=["sombre"], can_target=False,
                               hexpand=True, vexpand=True)
-        self._appliquer_luminosite(self._lire_luminosite(), materiel=False)
+        self._appliquer_luminosite(self._lire_luminosite())
         return self.sombre
 
     def _lire_luminosite(self):
@@ -937,22 +932,14 @@ class Dock(Adw.Application):
         except OSError:
             pass
 
-    def _appliquer_luminosite(self, valeur, materiel=True):
-        """La moitié haute du curseur règle le rétroéclairage entre 200 et 255,
-        la moitié basse ajoute un voile noir : le panneau ne descend jamais
-        sous le seuil où le firmware le coupe."""
-        if valeur >= 55:
-            voile = 0.0
-            brut = LUMIERE_MIN_MATERIEL + round((255 - LUMIERE_MIN_MATERIEL)
-                                                * (valeur - 55) / 45)
-        else:
-            voile = (55 - valeur) / 45 * 0.8
-            brut = LUMIERE_MIN_MATERIEL
-        self.sombre.set_opacity(voile)
-        if materiel:
-            subprocess.Popen(["brightnessctl", "-q", "-d", BACKLIGHT, "set",
-                              str(max(LUMIERE_MIN_MATERIEL, brut))],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    def _appliquer_luminosite(self, valeur):
+        """Assombrir par un voile noir, jamais par le rétroéclairage.
+
+        Toute écriture dans /sys/class/backlight/asus_screenpad peut couper le
+        panneau, même à 249/255 : le firmware lie alimentation et luminosité,
+        l'écran disparaît et le lanceur avec. Le curseur ne touche donc qu'au
+        voile."""
+        self.sombre.set_opacity((100 - valeur) / 90 * 0.85)
 
     def _eteindre_pad(self, *_a):
         """Fermer le lanceur seul laisserait un panneau allumé et noir, sans

@@ -98,9 +98,11 @@ révèlent les autres identifiants non documentés.
 
 ## Attention
 
-Ne descends **jamais** la luminosité du ScreenPad sous ~200/255 : le firmware
-interprète une valeur basse comme une extinction, le connecteur disparaît et
-l'écran avec. Pour assombrir le pad, affiche du noir.
+Ne touche **pas** à la luminosité du ScreenPad
+(`/sys/class/backlight/asus_screenpad`) : le firmware lie alimentation et
+luminosité, et une écriture peut couper le panneau, même à une valeur haute
+(249/255 constaté). Le connecteur disparaît alors, et l'écran avec. Pour
+assombrir le pad, affiche du noir. Pour le rallumer : `screenpad-power on`.
 
 ## Licence
 
