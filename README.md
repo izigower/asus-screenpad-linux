@@ -85,9 +85,12 @@ hl.device({ name = "gdx1515:00-27c6:01f4-touchpad", output = "HDMI-A-2" })
 
 ## Pour aller plus loin
 
-Le dossier [`hyprland/`](hyprland/) contient un lanceur tactile façon écran
-d'accueil (grille d'applications, pages, réglages) et un cycle à trois états
-reproduisant le `Fn+F6` de Windows.
+Le dossier [`hyprland/`](hyprland/) contient **un ScreenXpert pour Linux** :
+écran d'accueil, barre de navigation, Control Center, Number Key, Quick Key,
+App Navigator et le pavé noir du mode trackpad, fidèles à l'interface ASUS.
+On y trouve aussi un cycle à trois états qui reproduit le `Fn+F6` de Windows.
+
+![Number Key sur le ScreenPad](docs/captures/number-key.png)
 
 [`docs/FINDINGS.md`](docs/FINDINGS.md) détaille la méthode de diagnostic :
 comment décompiler le DSDT pour trouver les identifiants WMI, et ce que
