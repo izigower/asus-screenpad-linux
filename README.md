@@ -110,20 +110,10 @@ firmware. Le correctif du noyau est accepté (voir
 [`docs/FINDINGS.md`](docs/FINDINGS.md#piège-de-la-luminosité--un-bug-du-pilote-pas-du-firmware)).
 Si le pad s'est éteint : `screenpad-power on`.
 
-## Assistance par IA
-
-Ce projet a été développé avec l'aide d'un assistant de code, Claude
-(Anthropic), pour le diagnostic du firmware, l'écriture des scripts et du
-lanceur, et la documentation. Toutes les mesures ont été faites sur la machine,
-et chaque modification a été testée sur le matériel avant d'être publiée.
-
-Dans l'esprit de la convention du noyau Linux pour les contributions assistées
-par IA :
-
-```
-Assisted-by: Claude:claude-opus-5-5
-```
-
 ## Licence
 
 GPL-2.0-or-later, comme les projets dont ce travail s'inspire.
+
+---
+
+*Co-écrit avec Claude Opus 5.5.*
