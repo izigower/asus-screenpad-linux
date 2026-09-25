@@ -790,20 +790,36 @@ class Dock(Adw.Application):
         for c in sorted(clients, key=lambda c: c.get("focusHistoryID", 0)):
             self.grille_fenetres.append(self._tuile_fenetre(c))
 
-    def _icone_classe(self, classe):
-        for candidat in (classe, classe.lower()):
-            info = info_app(f"{candidat}.desktop")
-            if info and info.get_icon():
-                return Gtk.Image.new_from_gicon(info.get_icon())
+    def _icone_fenetre(self, client):
+        """L'icône de l'application qui a ouvert la fenêtre.
+
+        La classe ne suffit pas : Omarchy lance par exemple des foot sous leur
+        propre identifiant (org.omarchy.agent), qu'aucun .desktop ne décrit. On
+        se rabat alors sur l'exécutable du processus, ici foot."""
+        noms = [client.get("class", ""), client.get("initialClass", "")]
+        try:
+            noms.append(os.path.basename(os.readlink(f"/proc/{client['pid']}/exe")))
+        except (OSError, KeyError):
+            pass
+        noms = [n for n in dict.fromkeys(noms) if n]
+        for nom in noms:
+            for candidat in (nom, nom.lower()):
+                info = info_app(f"{candidat}.desktop")
+                if info and info.get_icon():
+                    return Gtk.Image.new_from_gicon(info.get_icon())
         for info in Gio.AppInfo.get_all():
             wm = info.get_string("StartupWMClass") if hasattr(info, "get_string") else None
-            if wm and wm.lower() == classe.lower() and info.get_icon():
+            if wm and wm.lower() in (n.lower() for n in noms) and info.get_icon():
                 return Gtk.Image.new_from_gicon(info.get_icon())
-        return Gtk.Image.new_from_icon_name(classe.lower() or "application-x-executable")
+        theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+        for nom in noms:
+            if theme.has_icon(nom.lower()):
+                return Gtk.Image.new_from_icon_name(nom.lower())
+        return Gtk.Image.new_from_icon_name("application-x-executable")
 
     def _tuile_fenetre(self, client):
         adresse = client["address"]
-        icone = self._icone_classe(client.get("class", ""))
+        icone = self._icone_fenetre(client)
         icone.set_pixel_size(56)
         boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
         boite.append(icone)
