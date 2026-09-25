@@ -5,7 +5,7 @@ Reprend l'interface d'origine d'ASUS :
   - le fond d'écran du bureau et une grille d'applications, 8 par page ;
   - la barre de navigation du bas : TouchPad à gauche, Accueil et App
     Navigator au centre, Control Center à droite ;
-  - le Control Center : luminosité, App Navigator, Number Key, Quick Key,
+  - le Control Center : luminosité (réglée par le firmware), App Navigator, Number Key, Quick Key,
     verrouillage du pad, extinction ;
   - les utilitaires Number Key (pavé numérique) et Quick Key (raccourcis) ;
   - le pavé du mode trackpad : noir, un cadre fin, un trait séparant les
@@ -79,6 +79,11 @@ TOUCHMODE = premier_executable("/usr/local/bin/omarchy-screenpad-touchmode",
 MODES = ({"tactile": "tactile", "trackpad": "trackpad"}
          if TOUCHMODE and "omarchy" in TOUCHMODE
          else {"tactile": "touch", "trackpad": "pointer"})
+# Luminosité : via le firmware (acpi_call), jamais via le sysfs. Le pilote
+# asus-wmi de Linux <= 7.1 lit l'état d'alimentation à l'envers et éteint le
+# panneau à chaque écriture dans /sys/class/backlight/asus_screenpad.
+ALIMENTATION = premier_executable("/usr/local/bin/omarchy-screenpad-power",
+                                  "/usr/local/bin/screenpad-power")
 EXTINCTION = premier_executable("~/.local/bin/omarchy-screenpad-toggle",
                                 "~/.local/bin/omarchy-screenpad-cycle",
                                 "/usr/local/bin/screenpad-cycle")
@@ -382,9 +387,8 @@ window, .fond { background-color: #0b0d10; }
 .cadenas { color: #ffffff; background: alpha(#000000, 0.45); border-radius: 999px;
            min-width: 64px; min-height: 64px; }
 
-/* Assombrissement sous le seuil materiel, et voile de veille : du noir opaque.
-   (CSS en ASCII : litteral bytes.) */
-.sombre, .noir { background: #000000; }
+/* Voile de veille : du noir opaque. (CSS en ASCII : litteral bytes.) */
+.noir { background: #000000; }
 
 /* Pave du mode trackpad : tout est dessine au cairo, le bouton est invisible. */
 .croix-pave {
@@ -441,6 +445,9 @@ class Dock(Adw.Application):
         if LayerShell is not None:
             LayerShell.set_monitor(self.win, moniteur)
         self.win.present()
+        # Le firmware oublie la luminosité quand il coupe le panneau (veille,
+        # Fn+F6) : la réappliquer à chaque apparition.
+        self._appliquer_luminosite(self._lire_luminosite())
         if not getattr(self, "_branche", False):
             # hold() n'a été pris qu'une fois au démarrage : ne le relâcher
             # qu'au premier affichage, sinon l'application se termine.
@@ -476,7 +483,6 @@ class Dock(Adw.Application):
         self.verrou = self._panneau(self._verrou(), duree=120)
         for p in (self.numkey, self.quickkey, self.navigateur, self.verrou):
             pile.add_overlay(p)
-        pile.add_overlay(self._assombrir())
         pile.add_overlay(self._pave())
         pile.add_overlay(self._voile_veille())
 
@@ -865,7 +871,7 @@ class Dock(Adw.Application):
                           css_classes=["centre"])
         ligne = Gtk.Box(spacing=12)
         ligne.append(Gtk.Image(icon_name="display-brightness-symbolic", pixel_size=20))
-        self.curseur = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 10, 100, 1)
+        self.curseur = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 5, 100, 1)
         self.curseur.set_draw_value(False)
         self.curseur.set_hexpand(True)
         self.curseur.set_value(self._lire_luminosite())
@@ -909,22 +915,21 @@ class Dock(Adw.Application):
         self.centre.set_reveal_child(ouvert)
 
     # ---------- luminosité ----------
-    def _assombrir(self):
-        self.sombre = Gtk.Box(css_classes=["sombre"], can_target=False,
-                              hexpand=True, vexpand=True)
-        self._appliquer_luminosite(self._lire_luminosite())
-        return self.sombre
-
     def _lire_luminosite(self):
         try:
             with open(ETAT_LUMIERE) as f:
-                return max(10, min(100, int(f.read().strip())))
+                return max(5, min(100, int(f.read().strip())))
         except (OSError, ValueError):
             return 100
 
     def _regler_luminosite(self, echelle):
         valeur = int(echelle.get_value())
-        self._appliquer_luminosite(valeur)
+        # value-changed tombe à chaque pixel parcouru : n'appeler le firmware
+        # qu'une fois toutes les 60 ms, avec la dernière valeur.
+        self._lumiere_voulue = valeur
+        if not getattr(self, "_lumiere_prevue", False):
+            self._lumiere_prevue = True
+            GLib.timeout_add(60, self._envoyer_luminosite)
         try:
             os.makedirs(ETAT, exist_ok=True)
             with open(ETAT_LUMIERE, "w") as f:
@@ -932,14 +937,21 @@ class Dock(Adw.Application):
         except OSError:
             pass
 
-    def _appliquer_luminosite(self, valeur):
-        """Assombrir par un voile noir, jamais par le rétroéclairage.
+    def _envoyer_luminosite(self):
+        self._lumiere_prevue = False
+        self._appliquer_luminosite(self._lumiere_voulue)
+        return False
 
-        Toute écriture dans /sys/class/backlight/asus_screenpad peut couper le
-        panneau, même à 249/255 : le firmware lie alimentation et luminosité,
-        l'écran disparaît et le lanceur avec. Le curseur ne touche donc qu'au
-        voile."""
-        self.sombre.set_opacity((100 - valeur) / 90 * 0.85)
+    def _appliquer_luminosite(self, valeur):
+        """Pourcentage -> 1..255, écrit par le firmware (DEVS 0x00050032)."""
+        if ALIMENTATION is None:
+            return
+        brut = max(1, min(255, round(valeur * 255 / 100)))
+        try:
+            subprocess.Popen(["sudo", "-n", ALIMENTATION, "brightness", str(brut)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            print(f"luminosité impossible : {e}", file=sys.stderr)
 
     def _eteindre_pad(self, *_a):
         """Fermer le lanceur seul laisserait un panneau allumé et noir, sans

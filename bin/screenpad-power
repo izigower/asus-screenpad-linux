@@ -10,11 +10,16 @@
 # On passe donc par acpi_call pour invoquer directement la méthode ACPI du
 # firmware : \_SB.ATKD.WMNB, méthode DEVS, device id 0x00050031.
 #
-# usage : screenpad-power {on|off|toggle|status}
+# La luminosité passe par le même chemin, device id 0x00050032 : le pilote
+# asus-wmi de Linux <= 7.1 lit l'état d'alimentation à l'envers, et toute
+# écriture dans /sys/class/backlight/asus_screenpad éteint le panneau.
+#
+# usage : screenpad-power {on|off|toggle|status|is-on|brightness [1-255]}
 
 set -u
 
 DEVICE_ID=0x00050031      # SCREENPAD_POWER
+LUMIERE_ID=0x00050032     # SCREENPAD_LIGHT
 DEVS=0x53564544           # "DEVS" : écriture
 DSTS=0x53545344           # "DSTS" : lecture
 METHODE='\_SB.ATKD.WMNB'
@@ -44,5 +49,16 @@ case "${1:-status}" in
   toggle) allume && exec "$0" off || exec "$0" on ;;
   status) etat ;;
   is-on)  allume ;;
-  *)      echo "usage: $(basename "$0") {on|off|toggle|status|is-on}" >&2; exit 1 ;;
+  brightness)
+    # Sans valeur : lire. Octet de poids faible = luminosité, 0xff = maximum.
+    if [[ -z ${2:-} ]]; then
+      echo $(( $(appel $DSTS "$(tampon $((LUMIERE_ID)) 0)") & 0xff ))
+      exit
+    fi
+    # 0 est refusé : sur un pad éteint, le firmware rallume le panneau à
+    # toute valeur non nulle, et 0 ne sert à rien d'autre que noircir.
+    [[ $2 =~ ^[0-9]+$ ]] && (( $2 >= 1 && $2 <= 255 )) \
+      || { echo "luminosité : entier de 1 à 255" >&2; exit 1; }
+    appel $DEVS "$(tampon $((LUMIERE_ID)) $2)" >/dev/null ;;
+  *)      echo "usage: $(basename "$0") {on|off|toggle|status|is-on|brightness [1-255]}" >&2; exit 1 ;;
 esac

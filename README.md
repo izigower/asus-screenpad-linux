@@ -44,6 +44,7 @@ Prérequis : `acpi_call-dkms` (Arch), `acpi-call-dkms` (Debian/Ubuntu).
 screenpad-power on        # allume le panneau
 screenpad-power off       # l'éteint
 screenpad-power status    # 0x100a0 = allumé, 0x10000 = éteint
+screenpad-power brightness 128   # luminosité, de 1 à 255 (sans valeur : la lit)
 
 screenpad-touchmode touch    # le pad devient un écran tactile
 screenpad-touchmode pointer  # le pad redevient un trackpad
@@ -98,11 +99,16 @@ révèlent les autres identifiants non documentés.
 
 ## Attention
 
-Ne touche **pas** à la luminosité du ScreenPad
-(`/sys/class/backlight/asus_screenpad`) : le firmware lie alimentation et
-luminosité, et une écriture peut couper le panneau, même à une valeur haute
-(249/255 constaté). Le connecteur disparaît alors, et l'écran avec. Pour
-assombrir le pad, affiche du noir. Pour le rallumer : `screenpad-power on`.
+N'écris **pas** dans `/sys/class/backlight/asus_screenpad` (`brightnessctl`,
+curseur de ton bureau…) : jusqu'à Linux 7.1 au moins, le pilote `asus-wmi` lit
+l'état d'alimentation à l'envers. Chaque réglage de luminosité y envoie l'ordre
+d'éteindre le panneau, quelle que soit la valeur. Le connecteur disparaît, et
+l'écran avec.
+
+Règle la luminosité par `screenpad-power brightness <1-255>`, qui passe par le
+firmware. Le correctif du noyau est accepté (voir
+[`docs/FINDINGS.md`](docs/FINDINGS.md#piège-de-la-luminosité--un-bug-du-pilote-pas-du-firmware)).
+Si le pad s'est éteint : `screenpad-power on`.
 
 ## Licence
 

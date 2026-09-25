@@ -45,9 +45,10 @@ Les utilitaires s'y placent comme des applications :
 }
 ```
 
-Le curseur de luminosité ne touche jamais au rétroéclairage : il pose un
-voile noir. Le firmware lie alimentation et luminosité, et une écriture dans
-`asus_screenpad`, même à 249/255, peut couper le panneau.
+Le curseur de luminosité règle le vrai rétroéclairage, mais par le firmware
+(`screenpad-power brightness`, via `sudo -n`) et non par le sysfs : le pilote
+`asus-wmi` de Linux 7.1 éteint le panneau à chaque écriture sysfs. Il faut donc
+une règle sudoers sans mot de passe pour `screenpad-power brightness *`.
 
 Dépendances : `gtk4-layer-shell`, `libadwaita`, `python-gobject`, `wtype`
 (pour Number Key et Quick Key), et `uwsm-app` s'il est

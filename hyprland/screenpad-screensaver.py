@@ -13,28 +13,9 @@ pour savoir laquelle surveiller à la fermeture.
 import os, socket, subprocess, sys, time
 
 CLASSE = "org.omarchy.screensaver"
-BL = "/sys/class/backlight/asus_screenpad"
 ALIM = "/usr/local/bin/omarchy-screenpad-power"
 TOUCHE = "/usr/local/bin/omarchy-screenpad-touchmode"
 LANCEUR = os.path.expanduser("~/.local/bin/omarchy-screenpad-dock")
-
-
-def luminosite():
-    try:
-        with open(f"{BL}/brightness") as f:
-            return int(f.read().strip())
-    except (OSError, ValueError):
-        return None
-
-
-def regler(valeur):
-    try:
-        with open(f"{BL}/brightness", "w") as f:
-            f.write(str(valeur))
-        return True
-    except OSError:
-        # sysfs n'est pas accessible en écriture directe pour l'utilisateur
-        return os.system(f"brightnessctl -d asus_screenpad set {valeur} >/dev/null 2>&1") == 0
 
 
 def pad_allume():

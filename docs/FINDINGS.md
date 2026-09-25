@@ -86,8 +86,36 @@ Ce qui marche : le pad émet déjà des coordonnées absolues multitouch
 (`ABS_MT_POSITION_X/Y`) sur 128×64 mm, exactement le ratio 2:1 de son écran.
 Il suffit de le reclasser côté udev.
 
-## Piège de la luminosité
+## Piège de la luminosité : un bug du pilote, pas du firmware
 
-Alimentation et luminosité sont liées dans le firmware. Écrire une valeur basse
-dans `/sys/class/backlight/asus_screenpad/brightness` (testé 0, 1, 30, 50, 100,
-120, 150) fait passer `0x00050031` à 0 : le connecteur disparaît. 200 est sûr.
+Écrire dans `/sys/class/backlight/asus_screenpad/brightness` éteint le
+panneau : `0x00050031` passe à 0 et le connecteur disparaît. On a d'abord cru
+à une limite du firmware (« les valeurs basses éteignent, 200 est sûr »). En
+réalité, une écriture à 249 coupe le panneau aussi, et le firmware accepte
+toutes les valeurs de 1 à 255 quand on l'appelle directement.
+
+Le fautif est `update_screenpad_bl_status()` dans `asus-wmi` (Linux 7.1) :
+
+```c
+if (bd->props.power) {            /* pris pour « allumé »…               */
+        /* allume puis règle la luminosité */
+}
+if (!bd->props.power) {           /* …or 0 vaut BACKLIGHT_POWER_ON       */
+        asus_wmi_set_devstate(ASUS_WMI_DEVID_SCREENPAD_POWER, 0, NULL);
+}
+```
+
+`bl_power` vaut `0` (`BACKLIGHT_POWER_ON`) quand le pad est allumé, et le test
+est inversé. Chaque écriture de luminosité envoie donc l'ordre d'extinction.
+Signalé sur `platform-driver-x86` en septembre 2026 : la série de Denis Benato
+*« fix screenpad backlight regression »* corrige ce test. Ilpo Järvinen l'a
+appliquée le 18/09/2026 (commits 159e956fd4f9, 341b4769f5cf, 99215e618ff2,
+854be60ed0e9). Elle n'est pas encore dans les noyaux distribués.
+
+En attendant, on règle la luminosité par le firmware, comme l'alimentation :
+DEVS sur `0x00050032`, valeur 1 à 255. `screenpad-power brightness <1-255>`
+le fait, et `screenpad-power brightness` relit la valeur (octet de poids faible
+de DSTS `0x00050032`, `0xff` étant codé en dur comme maximum).
+
+Relevé sur UX5400EA : 128, 64, 16 et 1 appliqués et relus à l'identique, pad
+toujours allumé.
