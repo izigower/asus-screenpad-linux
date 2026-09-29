@@ -1,11 +1,13 @@
-# Comment le ScreenPad a été retrouvé
+# How the ScreenPad was found
 
-Notes de diagnostic, pour qui voudrait reproduire la démarche sur un autre
-modèle ASUS.
+[Version française](FINDINGS.fr.md)
 
-## Le piège initial
+Diagnostic notes, for anyone who wants to repeat the process on another ASUS
+model.
 
-Le ScreenPad n'apparaît nulle part :
+## The initial trap
+
+The ScreenPad does not appear anywhere:
 
 ```
 card1-DP-1      disconnected   modes=[]
@@ -13,109 +15,109 @@ card1-DP-2      disconnected   modes=[]
 card1-eDP-1     connected      modes=[2880x1800]
 ```
 
-J'ai passé des heures à forcer `DP-1` et `DP-2` — écriture dans
-`/sys/class/drm/*/status`, EDID fabriqué et injecté via `drm.edid_firmware`.
-Le connecteur passait bien `connected`, mais n'exposait que des modes VESA
-génériques : personne au bout du fil.
+The first lead was to force `DP-1` and `DP-2`: writing to
+`/sys/class/drm/*/status`, then building an EDID and injecting it through
+`drm.edid_firmware`. The connector did switch to `connected`, but only exposed
+generic VESA modes, with no display behind it.
 
-**Deux erreurs à ne pas refaire :**
+Two mistakes to avoid:
 
-1. Le panneau n'est pas sur DisplayPort mais sur **HDMI-A-2**.
-2. Un connecteur `disconnected` ne prouve rien quand le panneau est éteint.
+1. The panel is not on DisplayPort but on HDMI-A-2.
+2. A `disconnected` connector proves nothing while the panel is off.
 
-## La bonne méthode : lire le firmware
+## The right method: read the firmware
 
 ```sh
 sudo pacman -S acpica
 sudo acpidump -b && iasl -d dsdt.dat
 ```
 
-Chercher dans `dsdt.dsl` la méthode WMI d'ASUS, `\_SB.ATKD.WMNB`. Elle
-distribue les appels selon un identifiant de méthode encodé en ASCII :
+Look in `dsdt.dsl` for the ASUS WMI method, `\_SB.ATKD.WMNB`. It dispatches
+calls based on a method id encoded in ASCII:
 
-| Identifiant | ASCII | Rôle |
+| Id | ASCII | Role |
 |---|---|---|
-| `0x53545344` | `DSTS` | lecture d'un device |
-| `0x53564544` | `DEVS` | écriture |
+| `0x53545344` | `DSTS` | read a device |
+| `0x53564544` | `DEVS` | write |
 
-Puis repérer les device ids de la famille `0x000500xx` :
+Then find the device ids of the `0x000500xx` family:
 
-| Device id | Rôle | Connu du noyau |
+| Device id | Role | Known to the kernel |
 |---|---|---|
-| `0x00050031` | **alimentation du ScreenPad** | oui, mais mal exposé |
-| `0x00050032` | luminosité | oui |
-| `0x00050033` | présence (renvoie une constante) | non |
-| `0x00050034` | inconnu, bit dans l'EC | non |
-| `0x00050035` | inconnu, commandes EC `5`/`6` | non |
+| `0x00050031` | ScreenPad power | yes, but poorly exposed |
+| `0x00050032` | brightness | yes |
+| `0x00050033` | presence (returns a constant) | no |
+| `0x00050034` | unknown, bit in the EC | no |
+| `0x00050035` | unknown, EC commands `5`/`6` | no |
 
-## Appeler la méthode
+## Calling the method
 
-`asus-wmi` n'expose pas d'écriture utilisable sur `0x00050031`, d'où le passage
-par `acpi_call` :
+`asus-wmi` does not expose a usable write on `0x00050031`, so the call goes
+through `acpi_call`:
 
 ```sh
 echo '\_SB.ATKD.WMNB 0x0 0x53564544 b3100050001000000' > /proc/acpi/call
 ```
 
-Le tampon contient le device id puis la valeur, chacun sur 4 octets en
+The buffer holds the device id followed by the value, each on 4 bytes,
 little-endian.
 
-## Le bug du pilote noyau
+## The kernel driver bug
 
-L'attribut `bl_power` du backlight `asus_screenpad` ne reflète pas l'état réel
-et ne permet pas de rallumer le panneau :
+The `bl_power` attribute of the `asus_screenpad` backlight does not reflect the
+real state and cannot power the panel back on:
 
-| Étape | `bl_power` | état firmware | écran visible |
+| Step | `bl_power` | firmware state | display visible |
 |---|---|---|---|
-| panneau allumé | 0 | `0x100a0` | oui |
-| coupé par le firmware | **0** | `0x10000` | non |
-| écriture `bl_power` 0/1/0 | 0 | `0x10000` | non |
-| appel WMI direct | 0 | `0x100a0` | oui |
+| panel on | 0 | `0x100a0` | yes |
+| turned off by the firmware | 0 | `0x10000` | no |
+| write `bl_power` 0/1/0 | 0 | `0x10000` | no |
+| direct WMI call | 0 | `0x100a0` | yes |
 
-Le pilote croit le panneau allumé alors qu'il est éteint, et son interface
-n'a aucun effet. Signalable en amont.
+The driver believes the panel is on while it is off, and its interface has no
+effect. Worth reporting upstream.
 
-## Le tactile
+## Touch
 
-Le descripteur HID déclare deux collections — `Touch Pad` (report 17) et
-`Touch Screen` (report 1) — plus un `Input Mode` (report 9, 3 octets).
-Écrire `09 02 00` pour demander le mode écran tactile est **accepté sans erreur
-mais sans effet** : la collection n'est pas implémentée dans le firmware.
+The HID descriptor declares two collections, `Touch Pad` (report 17) and
+`Touch Screen` (report 1), plus an `Input Mode` (report 9, 3 bytes). Writing
+`09 02 00` to request touchscreen mode is accepted without error but has no
+effect: the collection is not implemented in the firmware.
 
-Ce qui marche : le pad émet déjà des coordonnées absolues multitouch
-(`ABS_MT_POSITION_X/Y`) sur 128×64 mm, exactement le ratio 2:1 de son écran.
-Il suffit de le reclasser côté udev.
+What works: the pad already sends absolute multitouch coordinates
+(`ABS_MT_POSITION_X/Y`) over 128×64 mm, exactly the 2:1 ratio of its display.
+Reclassifying it through udev is enough.
 
-## Piège de la luminosité : un bug du pilote, pas du firmware
+## Brightness trap: a driver bug, not the firmware
 
-Écrire dans `/sys/class/backlight/asus_screenpad/brightness` éteint le
-panneau : `0x00050031` passe à 0 et le connecteur disparaît. On a d'abord cru
-à une limite du firmware (« les valeurs basses éteignent, 200 est sûr »). En
-réalité, une écriture à 249 coupe le panneau aussi, et le firmware accepte
-toutes les valeurs de 1 à 255 quand on l'appelle directement.
+Writing to `/sys/class/backlight/asus_screenpad/brightness` turns the panel
+off: `0x00050031` drops to 0 and the connector disappears. This first looked
+like a firmware limit ("low values turn it off, 200 is safe"). In fact a write
+of 249 turns the panel off too, and the firmware accepts every value from 1 to
+255 when called directly.
 
-Le fautif est `update_screenpad_bl_status()` dans `asus-wmi` (Linux 7.1) :
+The culprit is `update_screenpad_bl_status()` in `asus-wmi` (Linux 7.1):
 
 ```c
-if (bd->props.power) {            /* pris pour « allumé »…               */
-        /* allume puis règle la luminosité */
+if (bd->props.power) {            /* taken to mean "on"...               */
+        /* power on, then set the brightness */
 }
-if (!bd->props.power) {           /* …or 0 vaut BACKLIGHT_POWER_ON       */
+if (!bd->props.power) {           /* ...but 0 is BACKLIGHT_POWER_ON      */
         asus_wmi_set_devstate(ASUS_WMI_DEVID_SCREENPAD_POWER, 0, NULL);
 }
 ```
 
-`bl_power` vaut `0` (`BACKLIGHT_POWER_ON`) quand le pad est allumé, et le test
-est inversé. Chaque écriture de luminosité envoie donc l'ordre d'extinction.
-Signalé sur `platform-driver-x86` en septembre 2026 : la série de Denis Benato
-*« fix screenpad backlight regression »* corrige ce test. Ilpo Järvinen l'a
-appliquée le 18/09/2026 (commits 159e956fd4f9, 341b4769f5cf, 99215e618ff2,
-854be60ed0e9). Elle n'est pas encore dans les noyaux distribués.
+`bl_power` is `0` (`BACKLIGHT_POWER_ON`) when the pad is on, and the test is
+inverted. Every brightness write therefore sends the power-off command.
+Reported on `platform-driver-x86` in September 2026: Denis Benato's series
+*"fix screenpad backlight regression"* fixes this test. Ilpo Järvinen applied
+it on 2026-09-18 (commits 159e956fd4f9, 341b4769f5cf, 99215e618ff2,
+854be60ed0e9). It is not in distribution kernels yet.
 
-En attendant, on règle la luminosité par le firmware, comme l'alimentation :
-DEVS sur `0x00050032`, valeur 1 à 255. `screenpad-power brightness <1-255>`
-le fait, et `screenpad-power brightness` relit la valeur (octet de poids faible
-de DSTS `0x00050032`, `0xff` étant codé en dur comme maximum).
+Until then, brightness is set through the firmware, like power: DEVS on
+`0x00050032`, value 1 to 255. `screenpad-power brightness <1-255>` does this,
+and `screenpad-power brightness` reads the value back (low byte of DSTS
+`0x00050032`, with `0xff` hard-coded as the maximum).
 
-Relevé sur UX5400EA : 128, 64, 16 et 1 appliqués et relus à l'identique, pad
-toujours allumé.
+Measured on UX5400EA: 128, 64, 16 and 1 applied and read back unchanged, pad
+still on.

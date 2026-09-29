@@ -1,34 +1,37 @@
 # asus-screenpad-linux
 
-Faire fonctionner le **ScreenPad** d'un ASUS ZenBook sous Linux : comme second
-écran, et comme surface tactile.
+[Version française](README.fr.md)
 
-Testé sur un **ZenBook 14X OLED UX5400EA** (ScreenPad 2.0, 2160×1080).
+Makes the ScreenPad of an ASUS ZenBook work on Linux, both as a second display
+and as a touch surface.
 
-## Le problème
+Tested on a ZenBook 14X OLED UX5400EA (ScreenPad 2.0, 2160×1080).
 
-Sous Linux, le ScreenPad n'existe pas. Aucun écran supplémentaire n'apparaît,
-et les connecteurs DisplayPort restent `disconnected` — rien ne le distingue
-d'un port vide.
+![ScreenPad home screen](docs/captures/home.png)
 
-La raison n'est pas un pilote manquant : **le firmware laisse le panneau
-éteint**, et un panneau éteint est indiscernable d'un panneau absent.
+## Problem
 
-Les projets existants (`asus-wmi-screenpad`, `screenpad-tools`,
-`asus-screenpad-control`) ne traitent que la **luminosité** d'un ScreenPad déjà
-allumé, ou passent par le compositeur sans toucher au firmware. Aucun ne
-rallume le panneau.
+On Linux the ScreenPad does not show up. No extra display appears and every
+DisplayPort connector reports `disconnected`, exactly like an empty port.
 
-## La solution
+No driver is missing: the firmware leaves the panel powered off, and a panel
+that is off cannot be told apart from one that is absent.
 
-Une méthode ACPI du firmware, que le pilote `asus-wmi` du noyau n'expose pas :
+Existing projects (`asus-wmi-screenpad`, `screenpad-tools`,
+`asus-screenpad-control`) only handle the brightness of a ScreenPad that is
+already on, or work at the compositor level. None of them powers the panel on.
+
+## Solution
+
+The firmware has an ACPI method for it, which the kernel `asus-wmi` driver does
+not expose:
 
 ```
-\_SB.ATKD.WMNB → méthode DEVS → device id 0x00050031 ← alimentation du ScreenPad
+\_SB.ATKD.WMNB → DEVS method → device id 0x00050031 ← ScreenPad power
 ```
 
-Une fois le panneau allumé, tout le reste suit : le connecteur passe
-`connected`, l'écran apparaît, le compositeur peut l'utiliser normalement.
+Once the panel is powered, the connector becomes `connected` and the display
+can be used like any other.
 
 ## Installation
 
@@ -36,84 +39,87 @@ Une fois le panneau allumé, tout le reste suit : le connecteur passe
 sudo ./install.sh
 ```
 
-Prérequis : `acpi_call-dkms` (Arch), `acpi-call-dkms` (Debian/Ubuntu).
+Requires `acpi_call-dkms` (Arch) or `acpi-call-dkms` (Debian/Ubuntu).
 
-## Utilisation
+## Usage
 
 ```sh
-screenpad-power on        # allume le panneau
-screenpad-power off       # l'éteint
-screenpad-power status    # 0x100a0 = allumé, 0x10000 = éteint
-screenpad-power brightness 128   # luminosité, de 1 à 255 (sans valeur : la lit)
+screenpad-power on               # power the panel on
+screenpad-power off              # power it off
+screenpad-power status           # 0x100a0 = on, 0x10000 = off
+screenpad-power brightness 128   # brightness, 1 to 255 (no value: read it)
 
-screenpad-touchmode touch    # le pad devient un écran tactile
-screenpad-touchmode pointer  # le pad redevient un trackpad
+screenpad-touchmode touch        # the pad acts as a touchscreen
+screenpad-touchmode pointer      # the pad acts as a touchpad again
 ```
 
-Le service `screenpad.service` allume le panneau au démarrage et à chaque
-sortie de veille — le firmware le recoupe systématiquement.
+`screenpad.service` powers the panel on at boot and after every resume, since
+the firmware turns it off each time.
 
-## Configurer l'écran
+## Display setup
 
-Le panneau se déclare en **portrait 1080×2160** et doit être pivoté. Sous
-Hyprland :
+The panel reports itself as portrait 1080×2160 and needs to be rotated. With
+Hyprland:
 
 ```lua
 hl.monitor({ output = "HDMI-A-2", mode = "1080x2160@60",
              position = "0x900", scale = 2, transform = 3 })
 ```
 
-Le connecteur est **HDMI-A-2**, pas un port DisplayPort — c'est ce qui m'a fait
-chercher au mauvais endroit pendant des heures. Vérifie le tien avec
-`hyprctl monitors` ou `drm_info` une fois le panneau allumé.
+The connector is HDMI-A-2, not a DisplayPort one. Check yours with
+`hyprctl monitors` or `drm_info` once the panel is on.
 
-## Tactile
+## Touch
 
-Le pad ne peut pas être souris **et** écran tactile en même temps : c'est le
-même compromis que sous Windows, où un geste à trois doigts basculait entre les
-deux modes.
+The pad cannot be a touchpad and a touchscreen at the same time. Windows has
+the same limitation and switches between the two with a three-finger gesture.
 
-`screenpad-touchmode` reclasse le périphérique côté udev. Le firmware refuse la
-méthode standard (le champ `Input Mode` du descripteur HID est accepté puis
-ignoré), c'est donc la seule voie.
+`screenpad-touchmode` reclassifies the device through udev. The firmware
+ignores the standard method (the `Input Mode` field of the HID descriptor is
+accepted, then ignored), so this is the only way.
 
-Une fois en mode tactile, il faut encore dire au compositeur à quel écran
-correspond la surface :
+In touch mode, the compositor also needs to know which display the surface
+maps to:
 
 ```lua
 hl.device({ name = "gdx1515:00-27c6:01f4-touchpad", output = "HDMI-A-2" })
 ```
 
-## Pour aller plus loin
+## Hyprland tools
 
-Le dossier [`hyprland/`](hyprland/) contient **un ScreenXpert pour Linux** :
-écran d'accueil, barre de navigation, Control Center, Number Key, Quick Key,
-App Navigator et le pavé noir du mode trackpad, fidèles à l'interface ASUS.
-On y trouve aussi un cycle à trois états qui reproduit le `Fn+F6` de Windows.
+The [`hyprland/`](hyprland/) folder contains a launcher inspired by ASUS
+ScreenXpert: home screen over the desktop wallpaper, navigation bar, Control
+Center, Number Key, Quick Key, App Navigator and a touchpad mode. A three-state
+cycle reproduces `Fn+F6` from Windows.
 
-![Number Key sur le ScreenPad](docs/captures/number-key.png)
+| Number Key | Touchpad mode |
+|---|---|
+| ![Number Key](docs/captures/number-key.png) | ![Touchpad mode](docs/captures/mode-trackpad.png) |
 
-[`docs/FINDINGS.md`](docs/FINDINGS.md) détaille la méthode de diagnostic :
-comment décompiler le DSDT pour trouver les identifiants WMI, et ce que
-révèlent les autres identifiants non documentés.
+[`docs/FINDINGS.md`](docs/FINDINGS.md) describes how the method was
+found: decompiling the DSDT to get the WMI ids, and what the other undocumented
+ids do.
 
-## Attention
+## Brightness warning
 
-N'écris **pas** dans `/sys/class/backlight/asus_screenpad` (`brightnessctl`,
-curseur de ton bureau…) : jusqu'à Linux 7.1 au moins, le pilote `asus-wmi` lit
-l'état d'alimentation à l'envers. Chaque réglage de luminosité y envoie l'ordre
-d'éteindre le panneau, quelle que soit la valeur. Le connecteur disparaît, et
-l'écran avec.
+Do not write to `/sys/class/backlight/asus_screenpad` (`brightnessctl`, desktop
+brightness slider…). Up to at least Linux 7.1, `asus-wmi` reads the power state
+inverted, so every brightness change through sysfs powers the panel off,
+whatever the value. The connector and the display disappear.
 
-Règle la luminosité par `screenpad-power brightness <1-255>`, qui passe par le
-firmware. Le correctif du noyau est accepté (voir
-[`docs/FINDINGS.md`](docs/FINDINGS.md#piège-de-la-luminosité--un-bug-du-pilote-pas-du-firmware)).
-Si le pad s'est éteint : `screenpad-power on`.
+Use `screenpad-power brightness <1-255>` instead, which goes through the
+firmware. The kernel fix has been accepted (see
+[`docs/FINDINGS.md`](docs/FINDINGS.md#brightness-trap-a-driver-bug-not-the-firmware)).
+If the pad went off, run `screenpad-power on`.
 
-## Licence
+## License
 
-GPL-2.0-or-later, comme les projets dont ce travail s'inspire.
+GPL-2.0-or-later, like the projects this work builds on.
+
+This project is not affiliated with or endorsed by ASUS. ASUS, ZenBook,
+ScreenPad and ScreenXpert are trademarks of ASUSTeK Computer Inc. No ASUS code
+or assets are included: the interface is a reimplementation.
 
 ---
 
-*Co-écrit avec Claude Opus 5.5.*
+*Co-written with Claude Opus 5.5.*

@@ -1,21 +1,22 @@
-# Correctifs amont
+# Upstream patches
 
-Correctifs découverts pendant ce travail, destinés aux projets concernés.
-Ils sont ici pour être citables et reproductibles en attendant leur
-soumission en amont.
+[Version française](README.fr.md)
+
+Patches found during this work, intended for the projects concerned. They are
+kept here so they can be cited and reproduced until they are submitted
+upstream.
 
 ## `0001-elan-retry-on-transient-not-ready-status-for-all-dev.patch`
 
-**Projet :** [libfprint](https://gitlab.freedesktop.org/libfprint/libfprint)
-**Fichier :** `libfprint/drivers/elan.c`
+**Project:** [libfprint](https://gitlab.freedesktop.org/libfprint/libfprint)
+**File:** `libfprint/drivers/elan.c`
 
-Dans `CAPTURE_READ_DATA`, la reprise sur les états transitoires `0x00`
-(pas prêt) et `0xaf` (occupé) est réservée en dur au modèle `ELAN_0C58`.
-Les 60 autres capteurs de la table reçoivent `FP_DEVICE_ERROR_PROTO`, ce qui
-avorte l'enrôlement.
+In `CAPTURE_READ_DATA`, retrying on the transient states `0x00` (not ready)
+and `0xaf` (busy) is hard-coded for the `ELAN_0C58` model only. The 60 other
+sensors in the table get `FP_DEVICE_ERROR_PROTO`, which aborts enrollment.
 
-Constaté sur un **Elan `04f3:0c6e`** (ASUS ZenBook 14X OLED UX5400EA), où
-l'enrôlement échouait systématiquement :
+Seen on an Elan `04f3:0c6e` (ASUS ZenBook 14X OLED UX5400EA), where enrollment
+always failed:
 
 ```
 [elan] CAPTURE_NUM_STATES entering state 2
@@ -23,14 +24,14 @@ l'enrôlement échouait systématiquement :
        The driver encountered a protocol error with the device.
 ```
 
-`libfprint-image_device` signalait en outre la transition illégale qui en
-découle, `AWAIT_FINGER_ON` → `AWAIT_FINGER_OFF`, répétée toutes les dix
-secondes sans jamais atteindre `CAPTURE`.
+`libfprint-image_device` also reported the resulting illegal transition,
+`AWAIT_FINGER_ON` → `AWAIT_FINGER_OFF`, repeated every ten seconds without ever
+reaching `CAPTURE`.
 
-Avec le correctif, l'enrôlement aboutit. Le comportement du `0x0c58` est
-inchangé.
+With the patch, enrollment succeeds. The behaviour of the `0x0c58` is
+unchanged.
 
-### Appliquer
+### Applying
 
 ```sh
 git clone https://gitlab.freedesktop.org/libfprint/libfprint.git
@@ -41,9 +42,9 @@ meson setup build -Ddoc=false -Dgtk-examples=false \
 ninja -C build
 ```
 
-### Limite connue
+### Known limitation
 
-Ce correctif rend l'enrôlement **possible**, il ne rend pas ce capteur
-**fiable** : le `04f3:0c6e` est une bande de 149×51 pixels, et les scores de
-correspondance mesurés restent très en dessous du seuil (0 à 19 pour un seuil
-de 24). Utilisable pour du test, pas pour de l'authentification.
+This patch makes enrollment possible, not reliable: the `04f3:0c6e` is a
+149×51 pixel strip, and the measured match scores stay well below the
+threshold (0 to 19 for a threshold of 24). Usable for testing, not for
+authentication.
