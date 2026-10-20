@@ -38,8 +38,33 @@ dock_fermer() { :; }
 # d'un firmware qui accepte le mode digitizer. On suit donc l'écran : tactile
 # quand il affiche, trackpad sinon. C'est le compromis de ScreenXpert.
 TOUCH=/usr/local/bin/omarchy-screenpad-touchmode
-tactile()  { [[ -x $TOUCH ]] && sudo -n "$TOUCH" tactile  >/dev/null 2>&1 || true; }
-trackpad() { [[ -x $TOUCH ]] && sudo -n "$TOUCH" trackpad >/dev/null 2>&1 || true; }
+# La bascule udev dure ~3 s et tourne en arrière-plan : sur des appuis rapides,
+# plusieurs se chevauchaient et la dernière arrivée n'était pas forcément la bonne.
+# Elles passent donc une par une et appliquent l'état VOULU au moment où elles
+# s'exécutent (écran allumé et touchpad actif = tactile), pas celui de leur appel.
+mode_voulu() {
+  local m=trackpad
+  touchpad_coupe || { ecran_allume && m=tactile; }
+  [[ -x $TOUCH ]] || return 0
+  [[ $(sudo -n "$TOUCH" etat 2>/dev/null) == "$m" ]] && return 0
+  sudo -n "$TOUCH" "$m" >/dev/null 2>&1 || true
+}
+appliquer_mode() {
+  ( exec 8>"$RUNDIR/screenpad-touchmode.lock"; flock 8; mode_voulu ) 9>&- &
+}
+tactile()  { appliquer_mode; }
+trackpad() { appliquer_mode; }
+
+RUNDIR="${XDG_RUNTIME_DIR:-/tmp}"
+LOG="$RUNDIR/screenpad-cycle.log"
+# Un appui à la fois. Un appui arrivé pendant le précédent (coupure du pad +
+# écriture de l'état : ~1 s) lisait un état à moitié fait — écran déjà éteint,
+# touchpad pas encore marqué coupé — et repartait sur « tactile » au lieu de
+# « touchpad seul ». Il attend désormais la fin du précédent.
+exec 9>"$RUNDIR/screenpad-cycle.lock"
+flock -w 10 9 || exit 0
+journal() { printf '%s pid=%s %s\n' "$(date +%T.%3N)" "$$" "$*" >> "$LOG"; }
+journal "appel fichier=$([[ -s $TP_STATE ]] && echo 1 || echo 0) ecran=$(sudo -n "$SP" status 2>/dev/null)"
 
 [[ -x $SP ]] || { osd "$ICON_OFF" "ScreenPad : installation incomplète"; exit 1; }
 
@@ -61,28 +86,39 @@ touchpad() {   # $1 = true|false
 }
 
 ecran_allume() {
-  local v; v=$(sudo -n "$SP" status 2>/dev/null) || return 1
-  (( ( ${v:-0} & 0xffff ) != 0 ))
+  # acpi_call répond « not called » si un autre appel ACPI est en cours
+  # (bascule en arrière-plan, luminosité du lanceur) : on relit.
+  local v i
+  for i in 1 2 3 4 5; do
+    v=$(sudo -n "$SP" status 2>/dev/null)
+    [[ $v =~ ^0x[0-9a-fA-F]+$ ]] && break
+    sleep 0.1
+  done
+  [[ $v =~ ^0x[0-9a-fA-F]+$ ]] || return 1
+  (( ( v & 0xffff ) != 0 ))
 }
 touchpad_coupe() { [[ -s $TP_STATE ]]; }
 
 if touchpad_coupe; then
   # 3 -> 1 : on rend le touchpad, l'écran reste éteint
+  journal "-> 1 touchpad seul"
   osd "$ICON_PAD" "Touchpad seul"
   touchpad true
   sudo -n "$SP" off >/dev/null 2>&1
-  trackpad &
+  trackpad
 elif ecran_allume; then
   # 2 -> 3 : on éteint tout
+  journal "-> 3 désactivé"
   osd "$ICON_OFF" "ScreenPad désactivé"
   sudo -n "$SP" off >/dev/null 2>&1
   touchpad false
-  trackpad &
+  trackpad
 else
   # 1 -> 2 : le pad devient un écran.
   # L'OSD d'abord : le retour visuel ne doit pas attendre le matériel.
+  journal "-> 2 tactile"
   osd "$ICON_SCREEN" "ScreenPad tactile"
   dock_lancer                          # déjà en attente le plus souvent
   sudo -n "$SP" on >/dev/null 2>&1     # le lanceur s'affiche avec l'écran
-  tactile &                            # bascule udev : ~3 s, sans bloquer
+  tactile                              # bascule udev : ~3 s, en arrière-plan
 fi
