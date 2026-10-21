@@ -4,10 +4,14 @@
 
 Optionnels : le cœur du dépôt (`bin/`) suffit à faire apparaître le ScreenPad
 comme écran. Ces outils-ci reproduisent l'expérience ScreenXpert de Windows.
+`./setup`, à la racine, les installe et les active tous.
 
 | Fichier | Rôle |
 |---|---|
 | `screenpad-dock.py` | lanceur inspiré de ScreenXpert : écran d'accueil, barre de navigation, Control Center, Number Key, Quick Key, App Navigator, mode trackpad |
+| `screenpad-dock` | wrapper qui lance le lanceur avec `gtk4-layer-shell` préchargé |
+| `screenpad-geste.py` | lit le pad en direct : en mode trackpad, clic/tape à 3 doigts ou tape sur la croix → retour au tactile ; en mode tactile, 3 doigts → mode trackpad, même quand une tuile prend un doigt |
+| `screenpad-toggle` | allume/éteint le panneau avec son lanceur (`Super+Alt+P`) |
 | `screenpad-cycle` | cycle à trois états, équivalent du `Fn+F6` : trackpad seul → écran tactile → tout éteint |
 | `screenpad-screensaver.py` | éteint le panneau pendant l'économiseur d'écran et le rallume au réveil |
 | `screenpad-no-notifications` | Omarchy : masque les notifications sur le pad, elles restent sur l'écran principal (`--off` pour annuler, à relancer après une mise à jour d'Omarchy) |
@@ -53,7 +57,8 @@ Les utilitaires s'y placent comme des applications :
 Le curseur de luminosité règle le vrai rétroéclairage, mais par le firmware
 (`screenpad-power brightness`, via `sudo -n`) et non par le sysfs : le pilote
 `asus-wmi` de Linux 7.1 éteint le panneau à chaque écriture sysfs. Il faut donc
-une règle sudoers sans mot de passe pour `screenpad-power brightness *`.
+`sudo` sans mot de passe pour `screenpad-power`, ce que `install.sh` pose dans
+`/etc/sudoers.d/screenpad`.
 
 Dépendances : `gtk4-layer-shell`, `libadwaita`, `python-gobject`, `wtype`
 (pour Number Key et Quick Key), et `uwsm-app` s'il est
@@ -63,5 +68,5 @@ et survivent à un redémarrage du lanceur).
 Le lanceur exige `gtk4-layer-shell`, chargé via `LD_PRELOAD` : la bibliothèque
 doit précéder libwayland, ce qu'un import Python ne permet pas.
 
-Ces scripts portent encore des chemins et des noms propres à Omarchy ; ils sont
-fournis comme point de départ, pas comme paquet fini.
+Les fichiers d'état vivent dans `~/.local/state/omarchy/`, et le lanceur
+suppose que le pad est `HDMI-A-2` (`./setup` prévient si ce n'est pas le cas).

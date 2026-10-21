@@ -1,0 +1,4 @@
+# Lecture du touchpad du ScreenPad par l'utilisateur de la session (et lui seul).
+# Sert au service screenpad-geste : un clic a 3 doigts en mode souris rend le
+# dock tactile. Limite a ce peripherique : le clavier reste inaccessible.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="GDX1515:00 27C6:01F4 Touchpad", TAG+="uaccess"

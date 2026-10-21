@@ -1,0 +1,14 @@
+[Unit]
+Description=Éteint la luminosité du ScreenPad pendant l'économiseur d'écran
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/screenpad/screenpad-screensaver.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

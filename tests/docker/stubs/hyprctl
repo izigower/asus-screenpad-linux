@@ -1,0 +1,11 @@
+#!/bin/bash
+_log "$0" "$@"
+[[ -e /fake/sans-hyprland ]] && exit 1
+case $1 in
+  version) echo "Hyprland (faux)" ;;
+  monitors)
+    pad=""
+    [[ -e /fake/pad-allume ]] && pad=', {"name": "HDMI-A-2", "description": "Toshiba America Info Systems Inc ScreenXpert- 0x88888800", "width": 1080, "height": 2160, "scale": 2.0, "transform": 3}'
+    echo "[{\"name\": \"eDP-1\", \"description\": \"Samsung Display Corp. 0x4154\", \"width\": 2880, \"height\": 1800, \"scale\": 2.0, \"transform\": 0}$pad]" ;;
+esac
+exit 0

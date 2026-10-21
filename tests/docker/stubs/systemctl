@@ -1,0 +1,7 @@
+#!/bin/bash
+_log "$0" "$@"
+case " $* " in
+  *" is-active "*graphical-session.target*) [[ -e /fake/sans-session ]] && exit 3; exit 0 ;;
+  *" is-active "*) exit 3 ;;
+esac
+exit 0

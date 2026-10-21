@@ -1,0 +1,36 @@
+#!/bin/bash
+# Allume / éteint le ScreenPad, avec son lanceur et son mode d'entrée.
+#
+# Écran, lanceur tactile et mode d'entrée vont toujours ensemble : allumer le
+# panneau sans son lanceur, ou le couper en laissant le pad en mode tactile
+# (donc sans souris), n'a pas de sens.
+
+HELPER=/usr/local/bin/screenpad-power
+TOUCH=/usr/local/bin/screenpad-touchmode
+
+osd() { omarchy-osd -i "󰍹" -m "$1" 2>/dev/null || true; }
+touchmode() { [[ -x $TOUCH ]] && sudo -n "$TOUCH" "$1" >/dev/null 2>&1 || true; }
+
+dock_lancer() {
+  systemctl --user is-active --quiet screenpad-dock 2>/dev/null && return
+  systemd-run --user --quiet --unit=screenpad-dock \
+    --description="Ecran d'accueil du ScreenPad" \
+    "$HOME/.local/bin/screenpad-dock" 2>/dev/null || true
+}
+dock_fermer() { systemctl --user stop screenpad-dock 2>/dev/null || true; }
+
+[[ -x $HELPER ]] || { osd "ScreenPad : installation incomplète"; exit 1; }
+
+etat=$(sudo -n "$HELPER" status 2>/dev/null)
+if (( ( ${etat:-0} & 0xffff ) == 0 )); then
+  sudo -n "$HELPER" on >/dev/null 2>&1
+  sleep 2               # laisser Hyprland créer HDMI-A-2
+  dock_lancer
+  touchmode tactile
+  osd "ScreenPad tactile"
+else
+  dock_fermer
+  touchmode trackpad
+  sudo -n "$HELPER" off >/dev/null 2>&1
+  osd "ScreenPad éteint"
+fi

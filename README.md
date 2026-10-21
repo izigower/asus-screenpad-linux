@@ -36,10 +36,22 @@ can be used like any other.
 ## Installation
 
 ```sh
-sudo ./install.sh
+./setup
 ```
 
-Requires `acpi_call-dkms` (Arch) or `acpi-call-dkms` (Debian/Ubuntu).
+Run it as your normal user; it asks for `sudo` only for the system part. It
+checks each step and can be re-run safely: the machine, `acpi_call` (offers to
+install it), the system tools and services, the panel and its connector, the
+Hyprland config (written automatically on Omarchy, printed otherwise), the
+launcher and its dependencies, and notifications (Omarchy shell, mako or dunst
+keep them off the pad). It ends with what is left to do, if anything.
+
+`sudo ./install.sh` alone installs only the system part. Both need
+`acpi_call-dkms` (Arch) or `acpi-call-dkms` (Debian/Ubuntu).
+
+`tests/docker/run.sh` runs `./setup` in throwaway Arch containers with
+simulated hardware (fresh Omarchy, mako, dunst, non-ASUS, missing acpi_call,
+session without uwsm).
 
 ## Usage
 

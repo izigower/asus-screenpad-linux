@@ -72,21 +72,15 @@ def premier_executable(*chemins):
     return None
 
 
-# Deux jeux de noms coexistent : celui du dépôt (screenpad-touchmode touch /
-# pointer) et celui d'Omarchy (omarchy-screenpad-touchmode tactile / trackpad).
-TOUCHMODE = premier_executable("/usr/local/bin/omarchy-screenpad-touchmode",
-                               "/usr/local/bin/screenpad-touchmode")
-MODES = ({"tactile": "tactile", "trackpad": "trackpad"}
-         if TOUCHMODE and "omarchy" in TOUCHMODE
-         else {"tactile": "touch", "trackpad": "pointer"})
+# screenpad-touchmode accepte touch / pointer (et les alias tactile / trackpad).
+TOUCHMODE = premier_executable("/usr/local/bin/screenpad-touchmode")
+MODES = {"tactile": "touch", "trackpad": "pointer"}
 # Luminosité : via le firmware (acpi_call), jamais via le sysfs. Le pilote
 # asus-wmi de Linux <= 7.1 lit l'état d'alimentation à l'envers et éteint le
 # panneau à chaque écriture dans /sys/class/backlight/asus_screenpad.
-ALIMENTATION = premier_executable("/usr/local/bin/omarchy-screenpad-power",
-                                  "/usr/local/bin/screenpad-power")
-EXTINCTION = premier_executable("~/.local/bin/omarchy-screenpad-toggle",
-                                "~/.local/bin/omarchy-screenpad-cycle",
-                                "/usr/local/bin/screenpad-cycle")
+ALIMENTATION = premier_executable("/usr/local/bin/screenpad-power")
+EXTINCTION = premier_executable("~/.local/bin/screenpad-toggle",
+                                "~/.local/bin/screenpad-cycle")
 
 INTEGRES = ("screenxpert:number-key", "screenxpert:quick-key",
             "screenxpert:app-navigator")
@@ -398,6 +392,13 @@ window, .fond { background-color: #0b0d10; }
 """
 
 
+def effacer_survol(widget):
+    while widget is not None:
+        widget.unset_state_flags(Gtk.StateFlags.PRELIGHT | Gtk.StateFlags.ACTIVE)
+        effacer_survol(widget.get_first_child())
+        widget = widget.get_next_sibling()
+
+
 class Dock(Adw.Application):
     def __init__(self):
         # NON_UNIQUE : sans ça GApplication est mono-instance et tout nouveau
@@ -421,6 +422,10 @@ class Dock(Adw.Application):
         # signal tuerait le lanceur.
         GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
                             self._sur_sigusr1)
+        # SIGUSR2 = 3 doigts en mode tactile, vus par screenpad-geste.service
+        # sur l'evdev : fiable meme quand une tuile a pris un des contacts.
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2,
+                            self._sur_sigusr2)
         self.hold()           # empêche l'app de quitter tant qu'aucune fenêtre
         # L'interface est bâtie tout de suite, même sans écran : ne reste à
         # attendre que son apparition, pour l'afficher sans délai de rendu.
@@ -1091,12 +1096,21 @@ class Dock(Adw.Application):
     def _quitter_mode_souris(self, *_a):
         self.reveleur_pave.set_reveal_child(False)
         self.reveleur_pave.set_can_target(False)
+        # Le pad est detache puis recree pendant la bascule : le dernier
+        # bouton touche (TouchPad) ne recoit jamais sa sortie de survol et
+        # resterait surligne sous le pave.
+        effacer_survol(self.win.get_content())
         self._touchmode("tactile")
         self._ecrire_mode("tactile")
 
     def _sur_sigusr1(self):
         if hasattr(self, "reveleur_pave"):
             self._quitter_mode_souris()
+        return GLib.SOURCE_CONTINUE
+
+    def _sur_sigusr2(self):
+        if hasattr(self, "reveleur_pave") and not self.verrou.get_reveal_child():
+            self._mode_souris()
         return GLib.SOURCE_CONTINUE
 
     def _lire_mode(self):

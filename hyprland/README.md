@@ -4,11 +4,14 @@
 
 Optional: the core of the repository (`bin/`) is enough to make the ScreenPad
 show up as a display. These tools recreate the ScreenXpert experience from
-Windows.
+Windows. `./setup` at the root installs and enables all of them.
 
 | File | Role |
 |---|---|
 | `screenpad-dock.py` | launcher inspired by ScreenXpert: home screen, navigation bar, Control Center, Number Key, Quick Key, App Navigator, touchpad mode |
+| `screenpad-dock` | wrapper that starts the launcher with `gtk4-layer-shell` preloaded |
+| `screenpad-geste.py` | reads the pad directly: in touchpad mode a 3-finger click/tap or a tap on the cross goes back to the touchscreen; in touchscreen mode 3 fingers go to touchpad mode, even when a tile catches a finger |
+| `screenpad-toggle` | turns the panel on/off together with its launcher (`Super+Alt+P`) |
 | `screenpad-cycle` | three-state cycle, equivalent to `Fn+F6`: touchpad only → touchscreen → everything off |
 | `screenpad-screensaver.py` | turns the panel off during the screensaver and back on at wake-up |
 | `screenpad-no-notifications` | Omarchy: hides notifications on the pad, they stay on the main screen (`--off` to undo, re-run after an Omarchy update) |
@@ -50,9 +53,9 @@ listed like applications:
 
 The brightness slider sets the real backlight, but through the firmware
 (`screenpad-power brightness`, via `sudo -n`) rather than sysfs: the
-`asus-wmi` driver in Linux 7.1 turns the panel off on every sysfs write. A
-passwordless sudoers rule for `screenpad-power brightness *` is therefore
-required.
+`asus-wmi` driver in Linux 7.1 turns the panel off on every sysfs write. This needs
+passwordless sudo for `screenpad-power`, which `install.sh` sets up in
+`/etc/sudoers.d/screenpad`.
 
 Dependencies: `gtk4-layer-shell`, `libadwaita`, `python-gobject`, `wtype` (for
 Number Key and Quick Key), and `uwsm-app` if present (launched applications
@@ -61,5 +64,5 @@ then get their own systemd unit and survive a launcher restart).
 The launcher needs `gtk4-layer-shell` loaded through `LD_PRELOAD`: the library
 has to come before libwayland, which a Python import cannot guarantee.
 
-These scripts still contain Omarchy-specific paths and names. They are provided
-as a starting point, not as a finished package.
+State files live in `~/.local/state/omarchy/`, and the launcher assumes the
+pad is `HDMI-A-2` (`./setup` warns if it is not).

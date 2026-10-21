@@ -1,0 +1,14 @@
+[Unit]
+Description=Affiche l'écran d'accueil du ScreenPad à l'ouverture de session
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=oneshot
+# Unité transitoire screenpad-dock : les autres outils la visent par ce nom
+# (signaux, arrêt), et les applis lancées depuis le dock en sortent via uwsm-app.
+ExecStart=/bin/sh -c 'systemctl --user is-active --quiet screenpad-dock || exec systemd-run --user --quiet --unit=screenpad-dock --description="Ecran d accueil du ScreenPad" %h/.local/bin/screenpad-dock'
+
+[Install]
+WantedBy=graphical-session.target

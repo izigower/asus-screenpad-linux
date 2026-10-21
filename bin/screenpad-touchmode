@@ -12,6 +12,7 @@
 # même que sous Windows : le pad est soit une souris, soit un écran tactile.
 #
 # usage : screenpad-touchmode {touch|pointer|status}
+#         (alias français : tactile, trackpad, etat — etat répond tactile/trackpad)
 
 set -u
 
@@ -20,18 +21,24 @@ REGLE=/etc/udev/rules.d/71-screenpad-touchscreen.rules
 : "${SCREENPAD_I2C:=i2c-GDX1515:00}"
 DRIVER=/sys/bus/i2c/drivers/i2c_hid_acpi
 
-[[ $EUID -eq 0 || ${1:-status} == status ]] || { echo "root requis" >&2; exit 1; }
+MODE=${1:-status}
+FR=0
+case "$MODE" in
+  tactile) MODE=touch ;; trackpad) MODE=pointer ;; etat) MODE=status; FR=1 ;;
+esac
+
+[[ $EUID -eq 0 || $MODE == status ]] || { echo "root requis" >&2; exit 1; }
 
 reattacher() {
   udevadm control --reload-rules
   echo "$SCREENPAD_I2C" > "$DRIVER/unbind" 2>/dev/null || true
-  sleep 1
   echo "$SCREENPAD_I2C" > "$DRIVER/bind" 2>/dev/null || true
-  sleep 2
-  udevadm trigger --subsystem-match=input >/dev/null 2>&1 || true
+  # Les règles sont rechargées avant le bind : les nouveaux périphériques
+  # naissent déjà avec la bonne étiquette, attendre udev suffit.
+  udevadm settle --timeout=3 || true
 }
 
-case "${1:-status}" in
+case "$MODE" in
   touch)
     cat > "$REGLE" <<EOF
 # Le ScreenPad est à la fois un touchpad et l'écran qu'il affiche. Étiqueté
@@ -44,6 +51,7 @@ EOF
   pointer)
     rm -f "$REGLE"; reattacher; echo "pointer" ;;
   status)
-    [[ -f $REGLE ]] && echo "touch" || echo "pointer" ;;
+    if (( FR )); then [[ -f $REGLE ]] && echo "tactile" || echo "trackpad"
+    else [[ -f $REGLE ]] && echo "touch" || echo "pointer"; fi ;;
   *) echo "usage: $(basename "$0") {touch|pointer|status}" >&2; exit 1 ;;
 esac

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Lance l'écran d'accueil du ScreenPad.
+#
+# gtk4-layer-shell doit être chargé avant libwayland-client, ce qu'un import
+# Python ne permet pas : d'où ce wrapper qui pose LD_PRELOAD en amont.
+APP="$HOME/.local/share/screenpad/screenpad-dock.py"
+
+LIB=$(ldconfig -p 2>/dev/null | awk '/libgtk4-layer-shell\.so/ {print $NF; exit}')
+[[ -n $LIB ]] || LIB=/usr/lib/libgtk4-layer-shell.so
+[[ -e $LIB ]] && export LD_PRELOAD="$LIB${LD_PRELOAD:+:$LD_PRELOAD}"
+exec python3 "$APP" "$@"

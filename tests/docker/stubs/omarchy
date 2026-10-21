@@ -1,0 +1,17 @@
+#!/bin/bash
+# Imite « omarchy plugin clone/remove/enable » sur ~/.config/omarchy/plugins.
+_log "$0" "$@"
+P=$HOME/.config/omarchy/plugins
+case "$1 $2" in
+  "plugin clone")
+    mkdir -p "$P"; cp -r /usr/share/omarchy/shell/plugins/notifications "$P/test.notifications"
+    python3 - "$P/test.notifications/manifest.json" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1])); m["id"] = "test.notifications"
+m["omarchy"] = {"clonedFrom": "omarchy.notifications"}
+json.dump(m, open(sys.argv[1], "w"), indent=2)
+PY
+    echo "Cloned" ;;
+  "plugin remove") rm -rf "${P:?}/$3" ;;
+esac
+exit 0

@@ -1,0 +1,3 @@
+#!/bin/bash
+# Journal commun des faux outils : /fake/appels.log
+echo "$(basename "$1") ${*:2}" >> /fake/appels.log 2>/dev/null || true

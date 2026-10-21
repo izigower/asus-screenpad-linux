@@ -1,0 +1,6 @@
+#!/bin/bash
+_log "$0" "$@"
+case $1 in
+  on) touch /fake/pad-allume ;;
+  status) [[ -e /fake/pad-allume ]] && echo 0x100a0 || echo 0x10000 ;;
+esac

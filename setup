@@ -1,0 +1,292 @@
+#!/bin/bash
+# Installe tout, en une commande, en utilisateur normal : ./setup
+# Vérifie chaque étape, ne demande sudo que pour la partie système, et peut
+# être relancé sans rien dupliquer.
+#   --yes        répond oui à toutes les questions
+#   --no-system  saute la partie root (déjà faite)
+set -u
+
+ICI="$(cd "$(dirname "$0")" && pwd)"
+OUI=0; SYSTEME=1
+for a in "$@"; do
+  case $a in
+    --yes|-y) OUI=1 ;;
+    --no-system) SYSTEME=0 ;;
+    -h|--help) sed -n 2,6p "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "option inconnue : $a" >&2; exit 2 ;;
+  esac
+done
+USER=${USER:-$(id -un)}
+[[ $EUID -ne 0 ]] || { echo "Lance ./setup en utilisateur normal (sudo sera demandé au besoin)."; exit 1; }
+
+# Racine des chemins matériels, remplaçable pour les tests.
+SYS=${SCREENPAD_SYSROOT:-}
+CONF=${XDG_CONFIG_HOME:-$HOME/.config}
+HYPR=$CONF/hypr
+SP=${SCREENPAD_POWER:-/usr/local/bin/screenpad-power}
+RESTE=()
+
+ok()   { printf '  \e[32m✓\e[0m %s\n' "$*"; }
+ko()   { printf '  \e[31m✗\e[0m %s\n' "$*"; }
+info() { printf '  · %s\n' "$*"; }
+etape() { printf '\n\e[1m%s\e[0m\n' "$*"; }
+reste() { RESTE+=("$*"); }
+demander() {
+  (( OUI )) && return 0
+  local r; read -rp "  $1 [O/n] " r
+  [[ -z $r || $r =~ ^[oOyY] ]]
+}
+gestionnaire() {
+  if command -v pacman >/dev/null; then echo pacman
+  elif command -v apt-get >/dev/null; then echo apt
+  else echo ""; fi
+}
+installer_paquets() {
+  case $(gestionnaire) in
+    pacman) sudo pacman -S --needed --noconfirm "$@" ;;
+    apt)    sudo apt-get install -y "$@" ;;
+    *) return 1 ;;
+  esac
+}
+# Ajoute un bloc à un fichier de config seulement si le motif n'y est pas.
+ajouter_si_absent() {
+  local fichier=$1 motif=$2 bloc=$3 quoi=$4
+  if [[ -f $fichier ]] && grep -qF -- "$motif" "$fichier"; then
+    ok "$quoi : déjà présent"
+  else
+    printf '\n%s\n' "$bloc" >> "$fichier"
+    ok "$quoi : ajouté à ${fichier/#$HOME/\~}"
+  fi
+}
+
+# ------------------------------------------------------------------ 1. machine
+etape "1. Machine"
+vendeur=$(cat "$SYS/sys/class/dmi/id/sys_vendor" 2>/dev/null)
+modele=$(cat "$SYS/sys/class/dmi/id/product_name" 2>/dev/null)
+if [[ $vendeur == *ASUS* ]]; then
+  ok "$vendeur $modele"
+else
+  ko "Ce PC n'est pas un ASUS ($vendeur $modele)."
+  demander "Continuer quand même ?" || exit 1
+fi
+if [[ -e $SYS/sys/bus/i2c/devices/i2c-GDX1515:00 ]]; then
+  ok "Surface tactile du ScreenPad trouvée (GDX1515)"
+else
+  ko "Surface tactile GDX1515 introuvable : le tactile et les gestes ne marcheront pas."
+  reste "Surface tactile non reconnue : ouvrir une issue avec la sortie de 'ls /sys/bus/i2c/devices'."
+fi
+
+# --------------------------------------------------------------- 2. acpi_call
+etape "2. Module acpi_call"
+if modinfo acpi_call >/dev/null 2>&1; then
+  ok "acpi_call disponible"
+else
+  case $(gestionnaire) in
+    pacman) paquets=(acpi_call-dkms linux-headers) ;;
+    apt)    paquets=(acpi-call-dkms "linux-headers-$(uname -r)") ;;
+    *)      paquets=() ;;
+  esac
+  if (( ${#paquets[@]} )) && demander "acpi_call manque. Installer ${paquets[*]} ?"; then
+    installer_paquets "${paquets[@]}" && ok "acpi_call installé" || ko "Échec de l'installation d'acpi_call"
+  fi
+  modinfo acpi_call >/dev/null 2>&1 || { ko "Sans acpi_call le panneau ne peut pas s'allumer. Arrêt."; exit 1; }
+fi
+
+# ----------------------------------------------------------------- 3. système
+etape "3. Partie système (sudo)"
+if (( SYSTEME )); then
+  if sudo SCREENPAD_USER="$USER" "$ICI/install.sh" >/dev/null; then
+    ok "screenpad-power, screenpad-touchmode, screenpad.service, règles udev et sudoers"
+  else
+    ko "install.sh a échoué (relance-le seul pour voir l'erreur : sudo ./install.sh)"; exit 1
+  fi
+else
+  info "sautée (--no-system)"
+fi
+if sudo -n "$SP" status >/dev/null 2>&1; then
+  ok "sudo sans mot de passe pour les outils ScreenPad"
+else
+  ko "sudo -n $SP refusé : le lanceur ne pourra pas allumer ni basculer le pad"
+  reste "Vérifier /etc/sudoers.d/screenpad."
+fi
+
+# ------------------------------------------------------------------- 4. écran
+etape "4. Écran du ScreenPad"
+HYPRLAND=0
+if command -v hyprctl >/dev/null && hyprctl version >/dev/null 2>&1; then
+  HYPRLAND=1
+fi
+PAD="" PRINCIPAL=""
+if (( HYPRLAND )); then
+  sudo -n "$SP" on >/dev/null 2>&1
+  for _ in $(seq 20); do
+    PAD=$(hyprctl monitors all -j 2>/dev/null | python3 -c '
+import json, sys
+print(next((m["name"] for m in json.load(sys.stdin) if "ScreenXpert" in m["description"]), ""))')
+    [[ -n $PAD ]] && break
+    sleep 0.5
+  done
+  if [[ -n $PAD ]]; then
+    read -r PRINCIPAL HAUT_PRINCIPAL ECHELLE_PRINCIPAL < <(hyprctl monitors all -j | python3 -c '
+import json, sys
+m = next(m for m in json.load(sys.stdin) if "ScreenXpert" not in m["description"])
+haut = m["width"] if m.get("transform", 0) % 2 else m["height"]
+print(m["name"], round(haut / m["scale"]), format(m["scale"], "g"))')
+    if [[ -z ${PRINCIPAL:-} || -z ${HAUT_PRINCIPAL:-} ]]; then
+      ko "Écran principal introuvable à côté du pad"; PAD=""
+      reste "Vérifier 'hyprctl monitors all' : il faut l'écran principal et le pad."
+    else
+      ok "Panneau allumé sur $PAD, écran principal $PRINCIPAL"
+    fi
+    if [[ -n $PAD && $PAD != HDMI-A-2 ]]; then
+      ko "Le lanceur suppose HDMI-A-2 (CONNECTEUR dans screenpad-dock.py)"
+      reste "Mettre CONNECTEUR = \"$PAD\" dans ~/.local/share/screenpad/screenpad-dock.py."
+    fi
+  else
+    ko "Le panneau ne s'est pas déclaré comme écran après allumage"
+    reste "Lancer 'sudo screenpad-power on' puis 'hyprctl monitors all', et ouvrir une issue."
+  fi
+else
+  info "Hyprland ne tourne pas : configuration de l'écran à faire à la main (voir le README)"
+fi
+
+# -------------------------------------------------------- 5. config Hyprland
+etape "5. Configuration Hyprland"
+OMARCHY=0
+command -v omarchy >/dev/null && [[ -f $HYPR/monitors.lua ]] && OMARCHY=1
+if (( HYPRLAND )) && [[ -n $PAD ]]; then
+  ligne_ecran="hl.monitor({ output = \"$PAD\", mode = \"1080x2160@60\", position = \"0x$HAUT_PRINCIPAL\", scale = 2, transform = 3 })"
+  ligne_tactile="hl.device({ name = \"gdx1515:00-27c6:01f4\", output = \"$PAD\" })
+hl.device({ name = \"gdx1515:00-27c6:01f4-touchpad\", output = \"$PAD\" })"
+  if (( OMARCHY )); then
+    # L'écran principal doit être ancré en 0x0, sinon la règle par défaut
+    # (position auto) le place à droite du pad.
+    ajouter_si_absent "$HYPR/monitors.lua" "output = \"$PRINCIPAL\"" \
+"-- Écran principal ancré en 0x0, le ScreenPad se place dessous.
+hl.monitor({ output = \"$PRINCIPAL\", mode = \"preferred\", position = \"0x0\", scale = $ECHELLE_PRINCIPAL })" "Écran principal ancré"
+    ajouter_si_absent "$HYPR/monitors.lua" "output = \"$PAD\"" \
+"-- ScreenPad : déclaré en portrait 1080x2160, remis en paysage sous l'écran principal.
+$ligne_ecran" "Écran du pad"
+    ajouter_si_absent "$HYPR/input.lua" "gdx1515:00-27c6:01f4" \
+"-- ScreenPad : les contacts tombent sur son écran en mode tactile.
+$ligne_tactile" "Tactile rattaché au pad"
+    ajouter_si_absent "$HYPR/bindings.lua" "screenpad-cycle" \
+"-- Fn+F6 : cycle du ScreenPad (trackpad -> écran tactile -> tout coupé), comme sous Windows.
+hl.unbind(\"XF86TouchpadToggle\")
+o.bind(\"XF86TouchpadToggle\", \"Cycle ScreenPad\", \"screenpad-cycle\", { locked = true })
+o.bind(\"SUPER + ALT + P\", \"Toggle ScreenPad\", \"screenpad-toggle\")" "Raccourcis Fn+F6 et Super+Alt+P"
+    hyprctl reload >/dev/null 2>&1 && ok "Hyprland rechargé"
+  else
+    info "Pas Omarchy : ajoute ces lignes à ta config Hyprland."
+    printf '%s\n%s\n' "$ligne_ecran" "$ligne_tactile" | sed 's/^/      /'
+    reste "Ajouter la config écran, tactile et le raccourci XF86TouchpadToggle -> screenpad-cycle (voir le README)."
+  fi
+else
+  info "sautée (pas d'écran détecté)"
+fi
+
+# --------------------------------------------------------------- 6. lanceur
+etape "6. Lanceur, gestes et veille"
+manque=()
+python3 -c 'import gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); from gi.repository import Gtk, Adw' 2>/dev/null \
+  || manque+=(gtk)
+ldconfig -p 2>/dev/null | grep -q libgtk4-layer-shell || manque+=(layer-shell)
+command -v wtype >/dev/null || manque+=(wtype)
+if (( ${#manque[@]} )); then
+  case $(gestionnaire) in
+    pacman) declare -A P=([gtk]="python-gobject gtk4 libadwaita" [layer-shell]=gtk4-layer-shell [wtype]=wtype) ;;
+    apt)    declare -A P=([gtk]="python3-gi gir1.2-gtk-4.0 gir1.2-adw-1" [layer-shell]=libgtk4-layer-shell0 [wtype]=wtype) ;;
+    *)      declare -A P=() ;;
+  esac
+  paquets=(); for m in "${manque[@]}"; do paquets+=(${P[$m]:-}); done
+  if (( ${#paquets[@]} )) && demander "Dépendances manquantes : ${paquets[*]}. Installer ?"; then
+    installer_paquets "${paquets[@]}" && ok "Dépendances installées" || ko "Échec de l'installation des dépendances"
+  else
+    ko "Dépendances manquantes : ${manque[*]}"
+    reste "Installer : ${manque[*]} (gtk4 + libadwaita en Python, gtk4-layer-shell, wtype)."
+  fi
+else
+  ok "Dépendances présentes (GTK 4, libadwaita, gtk4-layer-shell, wtype)"
+fi
+
+install -Dm644 "$ICI/hyprland/screenpad-dock.py"        "$HOME/.local/share/screenpad/screenpad-dock.py"
+install -Dm644 "$ICI/hyprland/screenpad-geste.py"       "$HOME/.local/share/screenpad/screenpad-geste.py"
+install -Dm644 "$ICI/hyprland/screenpad-screensaver.py" "$HOME/.local/share/screenpad/screenpad-screensaver.py"
+for f in screenpad-dock screenpad-cycle screenpad-toggle screenpad-no-notifications; do
+  install -Dm755 "$ICI/hyprland/$f" "$HOME/.local/bin/$f"
+done
+for f in "$ICI"/systemd/user/*.service; do
+  install -Dm644 "$f" "$CONF/systemd/user/$(basename "$f")"
+done
+ok "Scripts installés dans ~/.local/bin et ~/.local/share/screenpad"
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)
+  ko "~/.local/bin n'est pas dans le PATH : les raccourcis ne trouveront pas screenpad-cycle"
+  reste "Ajouter ~/.local/bin au PATH." ;;
+esac
+
+systemctl --user daemon-reload 2>/dev/null
+unites=(screenpad-geste.service screenpad-screensaver.service screenpad-dock-autostart.service)
+if systemctl --user enable "${unites[@]}" >/dev/null 2>&1; then
+  ok "Services activés au démarrage de session : ${unites[*]%.service}"
+else
+  ko "Activation des services utilisateur impossible"
+  reste "systemctl --user enable ${unites[*]}"
+fi
+if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+  systemctl --user restart screenpad-geste.service screenpad-screensaver.service >/dev/null 2>&1
+  systemctl --user start screenpad-dock-autostart.service >/dev/null 2>&1
+  ok "Services démarrés"
+else
+  info "graphical-session.target inactif (session sans uwsm ?) : les services ne démarreront pas seuls"
+  reste "Session sans graphical-session.target : lancer screenpad-dock, screenpad-geste et screenpad-screensaver depuis l'autostart du compositeur."
+fi
+
+# ---------------------------------------------------------- 7. notifications
+etape "7. Notifications hors du pad"
+if [[ -z $PAD ]]; then
+  info "sautée (pad non détecté)"
+elif (( OMARCHY )) && pgrep -f "quickshell.*omarchy" >/dev/null; then
+  if "$HOME/.local/bin/screenpad-no-notifications" >/dev/null 2>&1; then
+    ok "Shell Omarchy : notifications masquées sur $PAD"
+  else
+    ko "screenpad-no-notifications a échoué"
+    reste "Lancer screenpad-no-notifications pour voir l'erreur."
+  fi
+elif pgrep -x mako >/dev/null; then
+  cfg=$CONF/mako/config
+  if [[ -f $cfg ]] && grep -q '^output=' "$cfg"; then
+    ok "mako : sortie déjà fixée ($(grep -m1 '^output=' "$cfg"))"
+  else
+    mkdir -p "$(dirname "$cfg")"
+    # Option globale : elle doit précéder toute section [critère].
+    { echo "output=$PRINCIPAL"; cat "$cfg" 2>/dev/null; } > "$cfg.screenpad" && mv "$cfg.screenpad" "$cfg"
+    makoctl reload 2>/dev/null
+    ok "mako : notifications sur $PRINCIPAL"
+  fi
+elif pgrep -x dunst >/dev/null; then
+  cfg=$CONF/dunst/dunstrc
+  if [[ -f $cfg ]] && grep -qE '^\s*monitor\s*=' "$cfg"; then
+    ok "dunst : écran déjà fixé ($(grep -m1 -E '^\s*monitor\s*=' "$cfg" | xargs))"
+  else
+    mkdir -p "$(dirname "$cfg")"
+    if [[ -f $cfg ]] && grep -q '^\[global\]' "$cfg"; then
+      sed -i "/^\[global\]/a\\    monitor = $PRINCIPAL\n    follow = none" "$cfg"
+    else
+      printf '[global]\n    monitor = %s\n    follow = none\n' "$PRINCIPAL" >> "$cfg"
+    fi
+    dunstctl reload 2>/dev/null || pkill -HUP -x dunst
+    ok "dunst : notifications sur $PRINCIPAL"
+  fi
+else
+  info "Gestionnaire de notifications non reconnu : rien modifié"
+  reste "Régler ton gestionnaire de notifications pour n'afficher que sur $PRINCIPAL."
+fi
+
+# ------------------------------------------------------------------ résumé
+etape "Terminé"
+if (( ${#RESTE[@]} )); then
+  echo "  Reste à faire :"
+  printf '   - %s\n' "${RESTE[@]}"
+else
+  echo "  Tout est en place. Fn+F6 fait tourner les modes du pad, 3 doigts basculent souris/tactile."
+fi

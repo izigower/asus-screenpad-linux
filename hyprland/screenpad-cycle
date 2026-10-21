@@ -6,14 +6,14 @@
 #   3. tout désactivé       (écran éteint, touchpad coupé)
 #
 # L'écran du pad n'existe pour le système que si le firmware l'a allumé
-# (device WMI 0x00050031) : voir omarchy-screenpad-power.
+# (device WMI 0x00050031) : voir screenpad-power.
 #
 # Le touchpad est piloté ici plutôt que via omarchy-toggle-touchpad, qui
 # afficherait son propre OSD en plus du nôtre. On reprend sa mécanique :
 # hl.device pour l'état vivant, et un fichier d'état que
 # default/hypr/disabled-input-device.lua relit à chaque rechargement.
 
-SP=/usr/local/bin/omarchy-screenpad-power
+SP=/usr/local/bin/screenpad-power
 TP_STATE="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled-name"
 
 # Glyphes vérifiés au rendu : touchpad, écran, croix.
@@ -28,7 +28,7 @@ dock_lancer() {
   systemctl --user is-active --quiet screenpad-dock 2>/dev/null && return
   systemd-run --user --quiet --unit=screenpad-dock \
     --description="Ecran d'accueil du ScreenPad" \
-    "$HOME/.local/bin/omarchy-screenpad-dock" 2>/dev/null || true
+    "$HOME/.local/bin/screenpad-dock" 2>/dev/null || true
 }
 # Ne pas arrêter le lanceur : il se cache de lui-même quand l'écran disparaît et
 # reste prêt, ce qui rend le rallumage instantané.
@@ -37,7 +37,7 @@ dock_fermer() { :; }
 # Le pad est soit une souris, soit un écran tactile — jamais les deux, faute
 # d'un firmware qui accepte le mode digitizer. On suit donc l'écran : tactile
 # quand il affiche, trackpad sinon. C'est le compromis de ScreenXpert.
-TOUCH=/usr/local/bin/omarchy-screenpad-touchmode
+TOUCH=/usr/local/bin/screenpad-touchmode
 # La bascule udev dure ~3 s et tourne en arrière-plan : sur des appuis rapides,
 # plusieurs se chevauchaient et la dernière arrivée n'était pas forcément la bonne.
 # Elles passent donc une par une et appliquent l'état VOULU au moment où elles

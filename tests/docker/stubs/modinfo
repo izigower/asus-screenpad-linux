@@ -1,0 +1,4 @@
+#!/bin/bash
+# acpi_call présent sauf si /fake/sans-acpi, tant que pacman ne l'a pas « installé ».
+[[ $1 == acpi_call && -e /fake/sans-acpi && ! -e /fake/acpi-installe ]] && exit 1
+exit 0

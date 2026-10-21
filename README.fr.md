@@ -37,10 +37,23 @@ s'utilise comme n'importe quel autre.
 ## Installation
 
 ```sh
-sudo ./install.sh
+./setup
 ```
 
-Nécessite `acpi_call-dkms` (Arch) ou `acpi-call-dkms` (Debian/Ubuntu).
+À lancer en utilisateur normal ; `sudo` n'est demandé que pour la partie
+système. Il vérifie chaque étape et peut être relancé sans risque : la machine,
+`acpi_call` (propose de l'installer), les outils et services système, le
+panneau et son connecteur, la config Hyprland (écrite d'office sous Omarchy,
+affichée sinon), le lanceur et ses dépendances, et les notifications (shell
+Omarchy, mako ou dunst les gardent hors du pad). Il finit par ce qui reste à
+faire, s'il reste quelque chose.
+
+`sudo ./install.sh` seul n'installe que la partie système. Les deux
+nécessitent `acpi_call-dkms` (Arch) ou `acpi-call-dkms` (Debian/Ubuntu).
+
+`tests/docker/run.sh` fait tourner `./setup` dans des conteneurs Arch jetables
+avec un matériel simulé (Omarchy neuf, mako, dunst, PC non ASUS, acpi_call
+absent, session sans uwsm).
 
 ## Utilisation
 
