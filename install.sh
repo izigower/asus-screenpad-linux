@@ -13,6 +13,7 @@ if ! modprobe acpi_call 2>/dev/null; then
   echo "  Debian/Ubuntu : apt install acpi-call-dkms"
   exit 1
 fi
+mkdir -p /etc/modules-load.d
 echo acpi_call > /etc/modules-load.d/acpi_call.conf
 
 install -Dm755 "$ICI/bin/screenpad-power"     /usr/local/bin/screenpad-power

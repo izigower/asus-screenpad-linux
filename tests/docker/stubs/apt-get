@@ -1,0 +1,4 @@
+#!/bin/bash
+_log "$0" "$@"
+[[ " $* " == *" acpi-call-dkms "* ]] && touch /fake/acpi-installe
+exit 0

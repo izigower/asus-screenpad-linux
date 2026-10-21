@@ -86,6 +86,15 @@ sans-acpi)
   vrai 'grep -q "pacman -S --needed --noconfirm acpi_call-dkms linux-headers" /fake/appels.log' "acpi_call proposé à pacman"
   vrai '[[ $(code) == 0 ]]' "continue une fois acpi_call installé"
   ;;
+apt)
+  machine "ASUSTeK COMPUTER INC."; touch /fake/sans-acpi
+  lancer --yes
+  vrai '[[ $(code) == 0 ]]' "setup se termine sans erreur"
+  vrai 'grep -q "apt-get install -y acpi-call-dkms linux-headers-$(uname -r)" /fake/appels.log' "acpi_call proposé à apt"
+  vrai 'grep -q "apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 libgtk4-layer-shell0 wtype" /fake/appels.log' "dépendances proposées à apt"
+  vrai 'sudo visudo -c >/dev/null && sudo grep -q "^test ALL=(root)" /etc/sudoers.d/screenpad' "règle sudoers valide"
+  vrai 'ls ~/.local/bin/screenpad-cycle ~/.local/share/screenpad/screenpad-geste.py >/dev/null' "scripts utilisateur installés"
+  ;;
 sans-session)
   machine "ASUSTeK COMPUTER INC."; touch /fake/sans-session /fake/sans-hyprland
   lancer --yes

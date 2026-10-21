@@ -51,9 +51,9 @@ faire, s'il reste quelque chose.
 `sudo ./install.sh` seul n'installe que la partie système. Les deux
 nécessitent `acpi_call-dkms` (Arch) ou `acpi-call-dkms` (Debian/Ubuntu).
 
-`tests/docker/run.sh` fait tourner `./setup` dans des conteneurs Arch jetables
+`tests/docker/run.sh` fait tourner `./setup` dans des conteneurs Arch et Ubuntu jetables
 avec un matériel simulé (Omarchy neuf, mako, dunst, PC non ASUS, acpi_call
-absent, session sans uwsm).
+absent, session sans uwsm, apt).
 
 ## Utilisation
 

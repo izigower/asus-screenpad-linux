@@ -49,9 +49,9 @@ keep them off the pad). It ends with what is left to do, if anything.
 `sudo ./install.sh` alone installs only the system part. Both need
 `acpi_call-dkms` (Arch) or `acpi-call-dkms` (Debian/Ubuntu).
 
-`tests/docker/run.sh` runs `./setup` in throwaway Arch containers with
+`tests/docker/run.sh` runs `./setup` in throwaway Arch and Ubuntu containers with
 simulated hardware (fresh Omarchy, mako, dunst, non-ASUS, missing acpi_call,
-session without uwsm).
+session without uwsm, apt).
 
 ## Usage
 

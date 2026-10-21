@@ -1,0 +1,8 @@
+# Variante Debian/Ubuntu du banc d'essai : chemin apt de ./setup.
+FROM ubuntu:24.04
+RUN apt-get update -qq && apt-get install -y -qq python3 sudo procps kmod >/dev/null \
+ && useradd -m test \
+ && echo 'test ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/00-test && chmod 440 /etc/sudoers.d/00-test
+COPY stubs/ /usr/local/sbin/
+RUN chmod +x /usr/local/sbin/* && rm /usr/local/sbin/pacman && mkdir -m 777 /fake
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin
