@@ -392,6 +392,18 @@ window, .fond { background-color: #0b0d10; }
 """
 
 
+def annuler_appuis(widget):
+    """Annule les appuis en cours sur toute l'arborescence : le doigt posé sur
+    une tuile au début d'un geste à 3 doigts ne doit pas la cliquer en se
+    relevant."""
+    while widget is not None:
+        for controleur in widget.observe_controllers():
+            if isinstance(controleur, Gtk.Gesture):
+                controleur.reset()
+        annuler_appuis(widget.get_first_child())
+        widget = widget.get_next_sibling()
+
+
 def effacer_survol(widget):
     while widget is not None:
         widget.unset_state_flags(Gtk.StateFlags.PRELIGHT | Gtk.StateFlags.ACTIVE)
@@ -1083,6 +1095,10 @@ class Dock(Adw.Application):
                     self._veille(False)
         return True
 
+    def _geste_trois_doigts(self):
+        annuler_appuis(self.win.get_content())
+        self._mode_souris()
+
     def _mode_souris(self, *_a):
         if self.reveleur_pave.get_reveal_child():
             return
@@ -1110,7 +1126,7 @@ class Dock(Adw.Application):
 
     def _sur_sigusr2(self):
         if hasattr(self, "reveleur_pave") and not self.verrou.get_reveal_child():
-            self._mode_souris()
+            self._geste_trois_doigts()
         return GLib.SOURCE_CONTINUE
 
     def _lire_mode(self):
@@ -1176,7 +1192,7 @@ class Dock(Adw.Application):
             self._contacts.add(seq)
             if len(self._contacts) >= 3 and not self.verrou.get_reveal_child():
                 self._contacts.clear()
-                self._mode_souris()
+                self._geste_trois_doigts()
         elif typ in (Gdk.EventType.TOUCH_END, Gdk.EventType.TOUCH_CANCEL):
             self._contacts.discard(seq)
         return False

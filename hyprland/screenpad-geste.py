@@ -35,7 +35,7 @@ BOUGE_MAX_MM = 3.0    # une tape ne se deplace (presque) pas
 # y vers le bas), collee a l'angle : un peu plus large que le dessin pour
 # viser au doigt. Reglee a l'essai sur le pad.
 CROIX_X_MIN, CROIX_Y_MAX = 0.90, 0.17
-REPOS = 5.0           # s : la bascule udev prend ~3 s, ignorer les rebonds
+REPOS = 1.0           # s : la bascule udev prend ~0,5 s, ignorer les rebonds
 dernier = 0.0         # hors de ecouter() : le pad est rouvert apres chaque bascule
 
 
@@ -170,7 +170,11 @@ def ecouter(chemin):
 
     def declencher_souris():
         global dernier
-        if time.monotonic() - dernier < REPOS or not mode_tactile_actif():
+        # Pas d'attente apres la bascule precedente : la croix se tape a un
+        # doigt, rien ne peut rebondir en 3 doigts, et le dock ignore un
+        # second signal. Attendre laissait la tuile touchee lancer son app.
+        if not mode_tactile_actif():
+            print("3 doigts ignores : dock absent ou session masquee", flush=True)
             return
         print("3 doigts en tactile : bascule en souris", flush=True)
         dernier = time.monotonic()
