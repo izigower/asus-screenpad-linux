@@ -1,0 +1,47 @@
+#!/bin/bash
+# Cache les notifications d'Omarchy sur le ScreenPad (elles restent sur l'écran principal).
+# Clone le plugin omarchy.notifications et masque ses toasts sur le connecteur du pad.
+# Relancer après une mise à jour d'Omarchy pour repartir du plugin à jour.
+# Usage : screenpad-no-notifications [--off]
+set -e
+
+PLUGINS="$HOME/.config/omarchy/plugins"
+
+# Clone existant, quel que soit son préfixe (<utilisateur>.notifications).
+clone_existant() {
+  grep -l '"clonedFrom": *"omarchy.notifications"' "$PLUGINS"/*/manifest.json 2>/dev/null \
+    | head -1 | xargs -r dirname | xargs -r basename
+}
+
+ancien=$(clone_existant)
+[[ -n $ancien ]] && omarchy plugin remove "$ancien" --yes >/dev/null 2>&1
+
+if [[ $1 == --off ]]; then
+  omarchy plugin enable omarchy.notifications >/dev/null 2>&1 || true
+  omarchy-restart-shell >/dev/null 2>&1
+  echo "Notifications de nouveau sur tous les écrans."
+  exit 0
+fi
+
+pad=$(hyprctl monitors all -j | python3 -c '
+import json, sys
+print(next((m["name"] for m in json.load(sys.stdin) if "ScreenXpert" in m["description"]), ""))')
+[[ -n $pad ]] || { echo "ScreenPad introuvable (allume-le : screenpad-power on)"; exit 1; }
+
+omarchy plugin clone omarchy.notifications >/dev/null
+clone=$(clone_existant)
+service="$PLUGINS/$clone/Service.qml"
+
+python3 - "$service" "$pad" <<'EOF'
+import sys
+chemin, pad = sys.argv[1], sys.argv[2]
+s = open(chemin).read()
+ancien = "      visible: popupModel.count > 0\n"
+if s.count(ancien) != 1:
+    sys.exit("Service.qml a changé dans Omarchy, correctif non appliqué")
+s = s.replace(ancien, f'      visible: popupModel.count > 0 && modelData.name !== "{pad}"\n')
+open(chemin, "w").write(s)
+EOF
+
+omarchy-restart-shell >/dev/null 2>&1
+echo "Notifications masquées sur $pad (plugin $clone)."

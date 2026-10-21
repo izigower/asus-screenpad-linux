@@ -11,6 +11,7 @@ Windows.
 | `screenpad-dock.py` | launcher inspired by ScreenXpert: home screen, navigation bar, Control Center, Number Key, Quick Key, App Navigator, touchpad mode |
 | `screenpad-cycle` | three-state cycle, equivalent to `Fn+F6`: touchpad only → touchscreen → everything off |
 | `screenpad-screensaver.py` | turns the panel off during the screensaver and back on at wake-up |
+| `screenpad-no-notifications` | Omarchy: hides notifications on the pad, they stay on the main screen (`--off` to undo, re-run after an Omarchy update) |
 
 ## The launcher
 

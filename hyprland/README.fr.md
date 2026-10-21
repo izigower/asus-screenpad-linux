@@ -10,6 +10,7 @@ comme écran. Ces outils-ci reproduisent l'expérience ScreenXpert de Windows.
 | `screenpad-dock.py` | lanceur inspiré de ScreenXpert : écran d'accueil, barre de navigation, Control Center, Number Key, Quick Key, App Navigator, mode trackpad |
 | `screenpad-cycle` | cycle à trois états, équivalent du `Fn+F6` : trackpad seul → écran tactile → tout éteint |
 | `screenpad-screensaver.py` | éteint le panneau pendant l'économiseur d'écran et le rallume au réveil |
+| `screenpad-no-notifications` | Omarchy : masque les notifications sur le pad, elles restent sur l'écran principal (`--off` pour annuler, à relancer après une mise à jour d'Omarchy) |
 
 ## Le lanceur
 
